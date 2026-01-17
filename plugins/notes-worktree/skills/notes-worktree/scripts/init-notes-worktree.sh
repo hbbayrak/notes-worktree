@@ -332,9 +332,14 @@ if grep -q "$EXCLUDE_MARKER" "$EXCLUSION_FILE" 2>/dev/null; then
     fi
 fi
 
-# Add managed entries
+# Add managed entries - only add blank line if file doesn't end with one
 {
-    echo ""
+    # Check if file exists and doesn't end with a blank line
+    if [[ -s "$EXCLUSION_FILE" ]] && [[ -n "$(tail -c 1 "$EXCLUSION_FILE")" ]]; then
+        echo ""  # File doesn't end with newline
+    elif [[ -s "$EXCLUSION_FILE" ]] && [[ -n "$(tail -1 "$EXCLUSION_FILE")" ]]; then
+        echo ""  # Last line has content, add blank line for separation
+    fi
     echo "$EXCLUDE_MARKER"
     echo "# Notes worktree (tracked in $BRANCH_NAME branch)"
     echo "/$WORKTREE_DIR/"
