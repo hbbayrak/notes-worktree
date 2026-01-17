@@ -1,0 +1,14 @@
+
+
+# >>> sync-notes managed entries >>>
+# Notes worktree (tracked in notes branch)
+/notes/
+/scripts
+
+# Documentation symlinks
+**/README.md
+CLAUDE.md
+
+# Exception: keep root README in main branch
+!/README.md
+# <<< sync-notes managed entries <<<
