@@ -100,6 +100,11 @@ while IFS= read -r -d '' notes_file; do
         continue
     fi
 
+    # Skip root README.md if project has its own README (intentional separation)
+    if [[ "$rel_path" == "README.md" ]] && [ -f "$PROJECT_ROOT/README.md" ] && [ ! -L "$PROJECT_ROOT/README.md" ]; then
+        continue
+    fi
+
     target_symlink="$PROJECT_ROOT/$rel_path"
 
     if [ ! -L "$target_symlink" ]; then
@@ -221,7 +226,8 @@ if [ $MISSING_COUNT -gt 0 ]; then
     else
         echo -e "  ${CYAN}○${NC} $MISSING_COUNT in notes without symlink"
     fi
-    if $VERBOSE; then
+    # Always show file list (not just verbose) since this is actionable
+    if ! $QUIET; then
         for f in "${NOTES_WITHOUT_SYMLINKS[@]}"; do
             echo "      $f"
         done

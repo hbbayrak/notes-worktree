@@ -468,6 +468,12 @@ find "$NOTES_ROOT" \
         continue
     fi
 
+    # Skip root README.md if project has its own (intentional separation)
+    if [[ "$rel_path" == "README.md" ]] && [ -f "$PROJECT_ROOT/README.md" ] && [ ! -L "$PROJECT_ROOT/README.md" ]; then
+        log_verbose "  SKIP (project has own README): $rel_path"
+        continue
+    fi
+
     # Skip if file matches exclude patterns
     if should_exclude_file "$notes_file"; then
         log_verbose "  SKIP (excluded): $rel_path"
