@@ -7,26 +7,18 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Source common utilities (resolve symlinks)
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SOURCE" ]; do
+    SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+    SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+    [[ $SCRIPT_SOURCE != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+source "$SCRIPT_DIR/_common.sh"
 
-print_error() { echo -e "${RED}ERROR: $1${NC}" >&2; }
-print_success() { echo -e "${GREEN}$1${NC}"; }
-print_warning() { echo -e "${YELLOW}$1${NC}"; }
-print_info() { echo -e "${BLUE}$1${NC}"; }
-
-# Resolve project root
-if git rev-parse --git-dir > /dev/null 2>&1; then
-    PROJECT_ROOT="$(git rev-parse --show-toplevel)"
-else
-    print_error "Not a git repository. Please run from within a git project."
-    exit 1
-fi
-
+# Initialize project root
+init_project_root
 cd "$PROJECT_ROOT"
 
 # -------------------------------------------
@@ -37,6 +29,7 @@ WORKTREE_DIR=""
 EXCLUSION_METHOD=""
 MOVE_FILES=false
 VSCODE_CONFIG=false
+EXCLUDE_PATTERNS=""
 
 show_usage() {
     cat << 'EOF'
@@ -49,6 +42,8 @@ Required:
 
 Optional:
   --move-files         Move existing .md files to notes
+  --exclude PATTERNS   Comma-separated file patterns to exclude from sync
+                       (e.g., "SKILL.md,CHANGELOG.md,*.generated.md")
   --vscode             Configure VSCode integration
   -h, --help           Show this help
 EOF
@@ -60,6 +55,7 @@ while [[ $# -gt 0 ]]; do
         --dir) WORKTREE_DIR="$2"; shift 2 ;;
         --exclusion) EXCLUSION_METHOD="$2"; shift 2 ;;
         --move-files) MOVE_FILES=true; shift ;;
+        --exclude) EXCLUDE_PATTERNS="$2"; shift 2 ;;
         --vscode) VSCODE_CONFIG=true; shift ;;
         -h|--help) show_usage; exit 0 ;;
         *) print_error "Unknown option: $1"; show_usage; exit 1 ;;
@@ -142,6 +138,7 @@ echo "  Branch name:      $BRANCH_NAME"
 echo "  Worktree dir:     ./$WORKTREE_DIR"
 echo "  Exclusion method: $EXCLUSION_METHOD"
 echo "  Move .md files:   $MOVE_FILES"
+echo "  Exclude patterns: ${EXCLUDE_PATTERNS:-none}"
 echo "  VSCode config:    $VSCODE_CONFIG"
 echo "=========================================="
 echo ""
@@ -174,7 +171,8 @@ cat > .notesrc << CONFIGEOF
   "branch": "$BRANCH_NAME",
   "worktree": "./$WORKTREE_DIR",
   "exclusion_method": "$EXCLUSION_METHOD",
-  "exclude_root_readme": true
+  "exclude_root_readme": true,
+  "exclude_patterns": "$EXCLUDE_PATTERNS"
 }
 CONFIGEOF
 
@@ -215,9 +213,8 @@ echo ""
 # Create scripts symlink to plugin directory
 # -------------------------------------------
 print_info "Creating scripts symlink to plugin..."
-PLUGIN_SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd -P)"
-ln -sf "$PLUGIN_SCRIPTS_DIR" "$PROJECT_ROOT/scripts"
-print_success "Created: scripts -> $PLUGIN_SCRIPTS_DIR"
+ln -sf "$SCRIPT_DIR" "$PROJECT_ROOT/scripts"
+print_success "Created: scripts -> $SCRIPT_DIR"
 echo ""
 
 # -------------------------------------------
@@ -266,7 +263,9 @@ echo ""
 # -------------------------------------------
 if $MOVE_FILES; then
     print_info "Running initial sync to move .md files..."
-    "$PLUGIN_SCRIPTS_DIR/sync-notes.sh"
+    if ! "$SCRIPT_DIR/sync-notes.sh"; then
+        print_warning "Initial sync had issues. Run './scripts/sync-notes.sh' manually to retry."
+    fi
 fi
 
 # -------------------------------------------

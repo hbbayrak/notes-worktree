@@ -7,21 +7,15 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-# Output functions with verbosity control
-log_error() { echo -e "${RED}ERROR: $1${NC}" >&2; }
-log_success() { $QUIET || echo -e "${GREEN}$1${NC}"; }
-log_warning() { $QUIET || echo -e "${YELLOW}$1${NC}"; }
-log_info() { $QUIET || echo -e "${BLUE}$1${NC}"; }
-log_verbose() { $VERBOSE && echo -e "${CYAN}$1${NC}"; }
-log_normal() { $QUIET || echo "$1"; }
+# Source common utilities
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SOURCE" ]; do
+    SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+    SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+    [[ $SCRIPT_SOURCE != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+source "$SCRIPT_DIR/_common.sh"
 
 # -------------------------------------------
 # Parse arguments
@@ -99,47 +93,11 @@ if $VERBOSE && $QUIET; then
 fi
 
 # -------------------------------------------
-# Resolve paths (symlink-safe using git)
+# Resolve paths and load configuration
 # -------------------------------------------
-PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
-if [ -z "$PROJECT_ROOT" ]; then
-    log_error "Not a git repository."
-    exit 1
-fi
-
-# -------------------------------------------
-# Load configuration
-# -------------------------------------------
-CONFIG_FILE="$PROJECT_ROOT/notes/.notesrc"
-if [ -f "$CONFIG_FILE" ]; then
-    # Parse JSON config (basic parsing without jq dependency)
-    EXCLUSION_METHOD=$(grep -o '"exclusion_method"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
-    WORKTREE_DIR=$(grep -o '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
-    WORKTREE_DIR="${WORKTREE_DIR#./}"  # Remove leading ./
-else
-    # Default configuration
-    EXCLUSION_METHOD="exclude"
-    WORKTREE_DIR="notes"
-fi
-
-NOTES_ROOT="$PROJECT_ROOT/$WORKTREE_DIR"
-
-# Set exclusion file based on method
-if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
-    EXCLUSION_FILE="$PROJECT_ROOT/.gitignore"
-else
-    EXCLUSION_FILE="$PROJECT_ROOT/.git/info/exclude"
-fi
-
-# Verify notes worktree exists
-if [ ! -d "$NOTES_ROOT/.git" ] && [ ! -f "$NOTES_ROOT/.git" ]; then
-    log_error "Notes worktree not found at ./$WORKTREE_DIR"
-    echo "Run: git worktree add ./$WORKTREE_DIR <branch-name>"
-    exit 1
-fi
-
-EXCLUDE_MARKER="# >>> sync-notes managed entries >>>"
-EXCLUDE_END="# <<< sync-notes managed entries <<<"
+init_project_root
+load_notes_config
+verify_notes_worktree
 
 # -------------------------------------------
 # Watch mode
@@ -376,7 +334,34 @@ fi
 
 # Create temp file for tracking paths
 TEMP_PATHS="$PROJECT_ROOT/.sync-notes-paths.tmp"
+trap 'rm -f "$TEMP_PATHS"' EXIT
 $DRY_RUN || rm -f "$TEMP_PATHS"
+
+# -------------------------------------------
+# Build exclude patterns for find command
+# -------------------------------------------
+build_exclude_args() {
+    local file="$1"
+    local filename=$(basename "$file")
+
+    # Check against exclude patterns from config
+    if [ -n "$EXCLUDE_PATTERNS" ]; then
+        IFS=',' read -ra PATTERNS <<< "$EXCLUDE_PATTERNS"
+        for pattern in "${PATTERNS[@]}"; do
+            pattern=$(echo "$pattern" | xargs)  # trim whitespace
+            # Support both exact match and glob patterns
+            if [[ "$filename" == $pattern ]]; then
+                return 0  # Should be excluded
+            fi
+        done
+    fi
+    return 1  # Should not be excluded
+}
+
+should_exclude_file() {
+    local file="$1"
+    build_exclude_args "$file"
+}
 
 # -------------------------------------------
 # Forward Sync: Main → Notes
@@ -400,15 +385,21 @@ find "$PROJECT_ROOT" \
     dest_file="$NOTES_ROOT/$rel_path"
     dest_dir="$(dirname "$dest_file")"
 
-    # Track for exclusion
-    if ! $DRY_RUN; then
-        echo "$rel_path" >> "$TEMP_PATHS"
-    fi
-
     # Skip if already a symlink
     if [ -L "$src_file" ]; then
         log_verbose "  SKIP (symlink): $rel_path"
         continue
+    fi
+
+    # Skip if file matches exclude patterns
+    if should_exclude_file "$src_file"; then
+        log_verbose "  SKIP (excluded): $rel_path"
+        continue
+    fi
+
+    # Track for exclusion (after filtering)
+    if ! $DRY_RUN; then
+        echo "$rel_path" >> "$TEMP_PATHS"
     fi
 
     log_normal "  Processing: $rel_path"
@@ -477,11 +468,17 @@ find "$NOTES_ROOT" \
         continue
     fi
 
+    # Skip if file matches exclude patterns
+    if should_exclude_file "$notes_file"; then
+        log_verbose "  SKIP (excluded): $rel_path"
+        continue
+    fi
+
     # Target location in main project
     target_file="$PROJECT_ROOT/$rel_path"
     target_dir="$(dirname "$target_file")"
 
-    # Track for exclusion
+    # Track for exclusion (after filtering)
     if ! $DRY_RUN; then
         echo "$rel_path" >> "$TEMP_PATHS"
     fi

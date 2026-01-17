@@ -6,17 +6,15 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-print_error() { echo -e "${RED}ERROR: $1${NC}" >&2; }
-print_success() { echo -e "${GREEN}$1${NC}"; }
-print_warning() { echo -e "${YELLOW}$1${NC}"; }
-print_info() { echo -e "${BLUE}$1${NC}"; }
+# Source common utilities (resolve symlinks)
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SOURCE" ]; do
+    SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+    SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+    [[ $SCRIPT_SOURCE != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+source "$SCRIPT_DIR/_common.sh"
 
 # -------------------------------------------
 # Parse arguments
@@ -97,43 +95,11 @@ if $FIX_ALL; then
 fi
 
 # -------------------------------------------
-# Resolve paths (symlink-safe using git)
+# Resolve paths and load configuration
 # -------------------------------------------
-PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
-if [ -z "$PROJECT_ROOT" ]; then
-    print_error "Not a git repository."
-    exit 1
-fi
-
-# -------------------------------------------
-# Load configuration
-# -------------------------------------------
-CONFIG_FILE="$PROJECT_ROOT/notes/.notesrc"
-if [ -f "$CONFIG_FILE" ]; then
-    EXCLUSION_METHOD=$(grep -o '"exclusion_method"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
-    WORKTREE_DIR=$(grep -o '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
-    WORKTREE_DIR="${WORKTREE_DIR#./}"
-else
-    EXCLUSION_METHOD="exclude"
-    WORKTREE_DIR="notes"
-fi
-
-NOTES_ROOT="$PROJECT_ROOT/$WORKTREE_DIR"
-
-if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
-    EXCLUSION_FILE="$PROJECT_ROOT/.gitignore"
-else
-    EXCLUSION_FILE="$PROJECT_ROOT/.git/info/exclude"
-fi
-
-EXCLUDE_MARKER="# >>> sync-notes managed entries >>>"
-EXCLUDE_END="# <<< sync-notes managed entries <<<"
-
-# Verify notes worktree exists
-if [ ! -d "$NOTES_ROOT/.git" ] && [ ! -f "$NOTES_ROOT/.git" ]; then
-    print_error "Notes worktree not found at ./$WORKTREE_DIR"
-    exit 1
-fi
+init_project_root
+load_notes_config
+verify_notes_worktree
 
 # -------------------------------------------
 # Header

@@ -43,31 +43,38 @@ Use AskUserQuestion to gather these options:
 3. **VSCode integration**: Configure VSCode to hide notes directory?
    - Yes or No
 
+4. **Exclude patterns**: Comma-separated list of file patterns to exclude from sync
+   - Example: `SKILL.md,CHANGELOG.md,*.generated.md`
+   - Default: empty (no exclusions)
+
 ### Step 2: Run Setup Script
 
-After gathering configuration, run:
+The scripts are located in this skill's directory. Run the init script using the skill's scripts path:
 
 ```bash
-$PLUGIN_SCRIPTS/init-notes-worktree.sh \
+<SKILL_SCRIPTS_DIR>/init-notes-worktree.sh \
   --branch notes \
   --dir ./notes \
   --exclusion <gitignore|exclude> \
+  [--exclude "pattern1,pattern2"] \
   [--move-files] \
   [--vscode]
 ```
+
+Where `<SKILL_SCRIPTS_DIR>` is the `scripts` subdirectory of this skill's base directory.
 
 ### Example Setup Flow
 
 ```
 Claude: I'll set up a notes worktree for documentation management.
-[AskUserQuestion: Exclusion method, Move files, VSCode integration]
+[AskUserQuestion: Exclusion method, Move files, VSCode integration, Exclude patterns]
 
-User selects: gitignore, yes, yes
+User selects: gitignore, yes, yes, "SKILL.md"
 
 Claude runs:
-$PLUGIN_SCRIPTS/init-notes-worktree.sh \
+<skill_base_dir>/scripts/init-notes-worktree.sh \
   --branch notes --dir ./notes \
-  --exclusion gitignore --move-files --vscode
+  --exclusion gitignore --exclude "SKILL.md" --move-files --vscode
 ```
 
 ## CLI Reference
@@ -88,6 +95,8 @@ Required:
 
 Optional:
   --move-files         Move existing .md files to notes and create symlinks
+  --exclude PATTERNS   Comma-separated file patterns to exclude from sync
+                       (e.g., "SKILL.md,CHANGELOG.md,*.generated.md")
   --vscode             Configure VSCode to hide notes directory
   -h, --help           Show help
 ```
@@ -310,7 +319,7 @@ Check that the path is in exclusion file. Run `./scripts/sync-notes.sh` to updat
 
 **Permission denied on scripts:**
 ```bash
-chmod +x "$PLUGIN_SCRIPTS"/*.sh
+chmod +x ./scripts/*.sh
 ```
 
 **Uninstall completely:**
