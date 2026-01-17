@@ -1,7 +1,7 @@
 # Negate exclusions so files are tracked in notes branch
 !**/README.md
 !CLAUDE.md
-!scripts/
+/scripts
 
 # Ignore system files
 .DS_Store
