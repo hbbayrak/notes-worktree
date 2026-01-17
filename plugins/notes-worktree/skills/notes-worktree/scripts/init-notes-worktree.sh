@@ -29,6 +29,60 @@ fi
 
 cd "$PROJECT_ROOT"
 
+# -------------------------------------------
+# CLI Argument Parsing
+# -------------------------------------------
+BRANCH_NAME=""
+WORKTREE_DIR=""
+EXCLUSION_METHOD=""
+MOVE_FILES=false
+VSCODE_CONFIG=false
+
+show_usage() {
+    cat << 'EOF'
+Usage: init-notes-worktree.sh [OPTIONS]
+
+Required:
+  --branch NAME        Branch name for documentation
+  --dir PATH           Worktree directory path
+  --exclusion METHOD   Exclusion method: 'gitignore' or 'exclude'
+
+Optional:
+  --move-files         Move existing .md files to notes
+  --vscode             Configure VSCode integration
+  -h, --help           Show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --branch) BRANCH_NAME="$2"; shift 2 ;;
+        --dir) WORKTREE_DIR="$2"; shift 2 ;;
+        --exclusion) EXCLUSION_METHOD="$2"; shift 2 ;;
+        --move-files) MOVE_FILES=true; shift ;;
+        --vscode) VSCODE_CONFIG=true; shift ;;
+        -h|--help) show_usage; exit 0 ;;
+        *) print_error "Unknown option: $1"; show_usage; exit 1 ;;
+    esac
+done
+
+# Validate required params
+[[ -z "$BRANCH_NAME" ]] && { print_error "--branch required"; show_usage; exit 1; }
+[[ -z "$WORKTREE_DIR" ]] && { print_error "--dir required"; show_usage; exit 1; }
+[[ -z "$EXCLUSION_METHOD" ]] && { print_error "--exclusion required"; show_usage; exit 1; }
+[[ "$EXCLUSION_METHOD" != "gitignore" && "$EXCLUSION_METHOD" != "exclude" ]] && \
+    { print_error "Invalid exclusion method: use 'gitignore' or 'exclude'"; exit 1; }
+
+# Validate branch name
+if [[ ! "$BRANCH_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    print_error "Invalid branch name. Use only letters, numbers, hyphens, and underscores."
+    exit 1
+fi
+
+# Normalize worktree path
+WORKTREE_DIR="${WORKTREE_DIR#./}"  # Remove leading ./
+WORKTREE_PATH="$PROJECT_ROOT/$WORKTREE_DIR"
+
 echo ""
 echo "=========================================="
 echo "  Notes Worktree Setup"
@@ -37,24 +91,12 @@ echo ""
 print_info "Project: $PROJECT_ROOT"
 echo ""
 
-# -------------------------------------------
-# Prompt for branch name
-# -------------------------------------------
-read -p "Branch name for documentation [notes]: " BRANCH_NAME
-BRANCH_NAME="${BRANCH_NAME:-notes}"
-
-# Validate branch name
-if [[ ! "$BRANCH_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-    print_error "Invalid branch name. Use only letters, numbers, hyphens, and underscores."
-    exit 1
-fi
-
 # Check if branch already exists (local)
 if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
     print_error "Branch '$BRANCH_NAME' already exists locally."
     echo "This script only creates NEW branches. Options:"
     echo "  1. Use a different branch name"
-    echo "  2. Set up worktree manually: git worktree add ./notes $BRANCH_NAME"
+    echo "  2. Set up worktree manually: git worktree add ./$WORKTREE_DIR $BRANCH_NAME"
     exit 1
 fi
 
@@ -63,22 +105,12 @@ if git ls-remote --heads origin "$BRANCH_NAME" 2>/dev/null | grep -q "$BRANCH_NA
     print_error "Branch '$BRANCH_NAME' already exists on remote (origin)."
     echo "This script only creates NEW branches. Options:"
     echo "  1. Use a different branch name"
-    echo "  2. Fetch and set up: git fetch origin $BRANCH_NAME && git worktree add ./notes $BRANCH_NAME"
+    echo "  2. Fetch and set up: git fetch origin $BRANCH_NAME && git worktree add ./$WORKTREE_DIR $BRANCH_NAME"
     exit 1
 fi
 
 print_success "Branch name '$BRANCH_NAME' is available."
 echo ""
-
-# -------------------------------------------
-# Prompt for worktree directory
-# -------------------------------------------
-read -p "Worktree directory [./notes]: " WORKTREE_DIR
-WORKTREE_DIR="${WORKTREE_DIR:-./notes}"
-
-# Normalize path
-WORKTREE_DIR="${WORKTREE_DIR#./}"  # Remove leading ./
-WORKTREE_PATH="$PROJECT_ROOT/$WORKTREE_DIR"
 
 # Check if directory exists
 if [ -d "$WORKTREE_PATH" ]; then
@@ -90,52 +122,18 @@ fi
 print_success "Worktree directory: ./$WORKTREE_DIR"
 echo ""
 
-# -------------------------------------------
-# Prompt for exclusion method
-# -------------------------------------------
-echo "Exclusion method determines how symlinks are hidden from git:"
-echo "  1) .git/info/exclude - Local only, not tracked (personal setup)"
-echo "  2) .gitignore        - Tracked, shared with team"
-echo ""
-read -p "Exclusion method [1/2, default: 1]: " EXCLUSION_CHOICE
-
-case "$EXCLUSION_CHOICE" in
-    2)
-        EXCLUSION_METHOD="gitignore"
-        EXCLUSION_FILE="$PROJECT_ROOT/.gitignore"
-        print_info "Using .gitignore (team-shared)"
-        ;;
-    *)
-        EXCLUSION_METHOD="exclude"
-        EXCLUSION_FILE="$PROJECT_ROOT/.git/info/exclude"
-        print_info "Using .git/info/exclude (local only)"
-        ;;
-esac
-echo ""
-
-# -------------------------------------------
-# Prompt for moving existing .md files
-# -------------------------------------------
-MD_COUNT=$(find "$PROJECT_ROOT" \
-    -name "*.md" \
-    -not -path "$PROJECT_ROOT/README.md" \
-    -not -path "$PROJECT_ROOT/node_modules/*" \
-    -not -path "$PROJECT_ROOT/.git/*" \
-    -not -path "*/node_modules/*" \
-    2>/dev/null | wc -l | tr -d ' ')
-
-if [ "$MD_COUNT" -gt 0 ]; then
-    echo "Found $MD_COUNT markdown files (excluding root README.md)."
-    read -p "Move existing .md files to notes and create symlinks? [y/N]: " MOVE_FILES
-    MOVE_FILES="${MOVE_FILES:-n}"
+# Set exclusion file based on method
+if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
+    EXCLUSION_FILE="$PROJECT_ROOT/.gitignore"
+    print_info "Using .gitignore (team-shared)"
 else
-    MOVE_FILES="n"
-    print_info "No existing .md files found (excluding root README.md)."
+    EXCLUSION_FILE="$PROJECT_ROOT/.git/info/exclude"
+    print_info "Using .git/info/exclude (local only)"
 fi
 echo ""
 
 # -------------------------------------------
-# Confirm settings
+# Configuration Summary
 # -------------------------------------------
 echo "=========================================="
 echo "  Configuration Summary"
@@ -144,16 +142,8 @@ echo "  Branch name:      $BRANCH_NAME"
 echo "  Worktree dir:     ./$WORKTREE_DIR"
 echo "  Exclusion method: $EXCLUSION_METHOD"
 echo "  Move .md files:   $MOVE_FILES"
+echo "  VSCode config:    $VSCODE_CONFIG"
 echo "=========================================="
-echo ""
-read -p "Proceed with setup? [Y/n]: " CONFIRM
-CONFIRM="${CONFIRM:-y}"
-
-if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
-    echo "Setup cancelled."
-    exit 0
-fi
-
 echo ""
 
 # -------------------------------------------
@@ -170,7 +160,6 @@ git rm -rf . > /dev/null 2>&1 || true
 git clean -fd > /dev/null 2>&1 || true
 
 # Create initial files
-mkdir -p scripts
 cat > README.md << 'DOCEOF'
 # Documentation
 
@@ -189,12 +178,14 @@ cat > .notesrc << CONFIGEOF
 }
 CONFIGEOF
 
-# Create .gitignore for notes branch
+# Create .gitignore for notes branch (scripts symlink is excluded)
 cat > .gitignore << 'IGNOREEOF'
+# Scripts symlink (points to plugin)
+/scripts
+
 # Negate exclusions so files are tracked in notes branch
 !**/README.md
 !CLAUDE.md
-!scripts/
 
 # Ignore system files
 .DS_Store
@@ -221,28 +212,12 @@ print_success "Worktree added."
 echo ""
 
 # -------------------------------------------
-# Copy scripts to worktree
+# Create scripts symlink to plugin directory
 # -------------------------------------------
-print_info "Copying management scripts..."
-SCRIPT_SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
-cp "$SCRIPT_SRC_DIR/sync-notes.sh" "$WORKTREE_PATH/scripts/"
-cp "$SCRIPT_SRC_DIR/combine-notes.sh" "$WORKTREE_PATH/scripts/"
-cp "$SCRIPT_SRC_DIR/status-notes.sh" "$WORKTREE_PATH/scripts/"
-cp "$SCRIPT_SRC_DIR/cleanup-notes.sh" "$WORKTREE_PATH/scripts/"
-cp "$SCRIPT_SRC_DIR/teardown-notes.sh" "$WORKTREE_PATH/scripts/"
-cp "$SCRIPT_SRC_DIR/notes-commit.sh" "$WORKTREE_PATH/scripts/"
-cp "$SCRIPT_SRC_DIR/notes-push.sh" "$WORKTREE_PATH/scripts/"
-cp "$SCRIPT_SRC_DIR/notes-pull.sh" "$WORKTREE_PATH/scripts/"
-chmod +x "$WORKTREE_PATH/scripts/"*.sh
-print_success "Scripts copied to $WORKTREE_DIR/scripts/"
-echo ""
-
-# -------------------------------------------
-# Create scripts symlink
-# -------------------------------------------
-print_info "Creating scripts symlink..."
-ln -sf "$WORKTREE_DIR/scripts" "$PROJECT_ROOT/scripts"
-print_success "Created: scripts -> $WORKTREE_DIR/scripts"
+print_info "Creating scripts symlink to plugin..."
+PLUGIN_SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+ln -sf "$PLUGIN_SCRIPTS_DIR" "$PROJECT_ROOT/scripts"
+print_success "Created: scripts -> $PLUGIN_SCRIPTS_DIR"
 echo ""
 
 # -------------------------------------------
@@ -287,36 +262,18 @@ print_success "Exclusions configured."
 echo ""
 
 # -------------------------------------------
-# Commit notes branch changes
-# -------------------------------------------
-print_info "Committing scripts to notes branch..."
-cd "$WORKTREE_PATH"
-git add -A
-git commit -m "Add sync and combine scripts" || true
-cd "$PROJECT_ROOT"
-print_success "Scripts committed."
-echo ""
-
-# -------------------------------------------
 # Move existing .md files if requested
 # -------------------------------------------
-if [[ "$MOVE_FILES" =~ ^[Yy]$ ]]; then
+if $MOVE_FILES; then
     print_info "Running initial sync to move .md files..."
-    "$WORKTREE_PATH/scripts/sync-notes.sh"
+    "$PLUGIN_SCRIPTS_DIR/sync-notes.sh"
 fi
 
 # -------------------------------------------
 # VSCode integration
 # -------------------------------------------
-echo ""
-echo "VSCode Integration"
-echo "------------------"
-echo "Would you like to configure VSCode to hide the notes directory"
-echo "from the file explorer and search results?"
-echo ""
-read -p "Configure VSCode? [y/N]: " VSCODE_CHOICE
-
-if [[ "$VSCODE_CHOICE" =~ ^[Yy]$ ]]; then
+if $VSCODE_CONFIG; then
+    print_info "Configuring VSCode integration..."
     VSCODE_DIR="$PROJECT_ROOT/.vscode"
     VSCODE_SETTINGS="$VSCODE_DIR/settings.json"
 
@@ -356,6 +313,7 @@ VSCODEEOF
         print_success "Created .vscode/settings.json"
         echo "  Notes directory will be hidden in VSCode explorer and search"
     fi
+    echo ""
 fi
 
 # -------------------------------------------

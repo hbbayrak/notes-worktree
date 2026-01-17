@@ -56,20 +56,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 # -------------------------------------------
-# Resolve paths
+# Resolve paths (symlink-safe using git)
 # -------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-if [[ "$SCRIPT_DIR" == */notes/scripts ]] || [[ "$SCRIPT_DIR" == */*/scripts ]]; then
-    NOTES_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    PROJECT_ROOT="$(cd "$NOTES_ROOT/.." && pwd)"
-else
-    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    NOTES_ROOT="$PROJECT_ROOT/notes"
-fi
-
-# Verify we're in a git repo
-if ! git -C "$PROJECT_ROOT" rev-parse --git-dir > /dev/null 2>&1; then
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$PROJECT_ROOT" ]; then
     print_error "Not a git repository."
     exit 1
 fi
@@ -77,7 +67,7 @@ fi
 # -------------------------------------------
 # Load configuration
 # -------------------------------------------
-CONFIG_FILE="$NOTES_ROOT/.notesrc"
+CONFIG_FILE="$PROJECT_ROOT/notes/.notesrc"
 if [ -f "$CONFIG_FILE" ]; then
     EXCLUSION_METHOD=$(grep -o '"exclusion_method"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
     WORKTREE_DIR=$(grep -o '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
@@ -88,6 +78,8 @@ else
     WORKTREE_DIR="notes"
     BRANCH_NAME="notes"
 fi
+
+NOTES_ROOT="$PROJECT_ROOT/$WORKTREE_DIR"
 
 if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
     EXCLUSION_FILE="$PROJECT_ROOT/.gitignore"

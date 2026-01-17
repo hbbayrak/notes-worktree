@@ -99,23 +99,10 @@ if $VERBOSE && $QUIET; then
 fi
 
 # -------------------------------------------
-# Resolve paths
+# Resolve paths (symlink-safe using git)
 # -------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-# Handle case where script is in notes/scripts/ (accessed via symlink)
-if [[ "$SCRIPT_DIR" == */notes/scripts ]] || [[ "$SCRIPT_DIR" == */*/scripts ]]; then
-    # Script is inside the worktree
-    NOTES_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    PROJECT_ROOT="$(cd "$NOTES_ROOT/.." && pwd)"
-else
-    # Script accessed from project root /scripts symlink
-    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    NOTES_ROOT="$PROJECT_ROOT/notes"
-fi
-
-# Verify we're in a git repo
-if ! git -C "$PROJECT_ROOT" rev-parse --git-dir > /dev/null 2>&1; then
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$PROJECT_ROOT" ]; then
     log_error "Not a git repository."
     exit 1
 fi
@@ -123,7 +110,7 @@ fi
 # -------------------------------------------
 # Load configuration
 # -------------------------------------------
-CONFIG_FILE="$NOTES_ROOT/.notesrc"
+CONFIG_FILE="$PROJECT_ROOT/notes/.notesrc"
 if [ -f "$CONFIG_FILE" ]; then
     # Parse JSON config (basic parsing without jq dependency)
     EXCLUSION_METHOD=$(grep -o '"exclusion_method"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
@@ -134,6 +121,8 @@ else
     EXCLUSION_METHOD="exclude"
     WORKTREE_DIR="notes"
 fi
+
+NOTES_ROOT="$PROJECT_ROOT/$WORKTREE_DIR"
 
 # Set exclusion file based on method
 if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
@@ -450,6 +439,15 @@ find "$PROJECT_ROOT" \
         rel_to_notes="$(python3 -c "import os.path; print(os.path.relpath('$dest_file', '$src_dir'))")"
         ln -sf "$rel_to_notes" "$src_file"
         log_normal "    Symlinked: $rel_to_notes"
+
+        # Auto-add non-README/CLAUDE files to .gitignore
+        if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
+            filename=$(basename "$rel_path")
+            if [[ "$filename" != "README.md" && "$filename" != "CLAUDE.md" ]]; then
+                # Untrack if previously tracked
+                git -C "$PROJECT_ROOT" rm --cached "$rel_path" 2>/dev/null || true
+            fi
+        fi
     else
         log_warning "[DRY-RUN] Would create symlink: $rel_path"
     fi
@@ -516,6 +514,15 @@ find "$NOTES_ROOT" \
         rel_to_notes="$(python3 -c "import os.path; print(os.path.relpath('$notes_file', '$target_dir'))")"
         ln -sf "$rel_to_notes" "$target_file"
         log_normal "    -> $rel_to_notes"
+
+        # Auto-add non-README/CLAUDE files to .gitignore
+        if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
+            filename=$(basename "$rel_path")
+            if [[ "$filename" != "README.md" && "$filename" != "CLAUDE.md" ]]; then
+                # Untrack if previously tracked
+                git -C "$PROJECT_ROOT" rm --cached "$rel_path" 2>/dev/null || true
+            fi
+        fi
     else
         log_warning "[DRY-RUN] Would create symlink: $rel_path"
     fi

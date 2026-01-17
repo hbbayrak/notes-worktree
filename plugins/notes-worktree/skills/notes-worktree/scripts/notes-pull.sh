@@ -1,6 +1,6 @@
 #!/bin/bash
 # Pull notes branch from remote and sync symlinks
-# Usage: notes-pull.sh [remote]
+# Usage: notes-pull.sh [OPTIONS] [REMOTE]
 
 set -e
 
@@ -19,40 +19,74 @@ print_info() { echo -e "${BLUE}$1${NC}"; }
 # -------------------------------------------
 # Parse arguments
 # -------------------------------------------
-REMOTE="${1:-origin}"
+REMOTE="origin"
 SYNC_AFTER=true
+AUTO_STASH=false
 
-if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
-    echo "Usage: notes-pull.sh [REMOTE]"
+show_help() {
+    echo "Usage: notes-pull.sh [OPTIONS] [REMOTE]"
     echo ""
     echo "Pull notes branch from remote and run sync to update symlinks."
     echo ""
     echo "Arguments:"
-    echo "  REMOTE    Remote name (default: 'origin')"
+    echo "  REMOTE           Remote name (default: 'origin')"
+    echo ""
+    echo "Options:"
+    echo "  --auto-stash     Automatically stash local changes before pull"
+    echo "  --no-sync        Skip running sync after pull"
+    echo "  -h, --help       Show this help message"
     echo ""
     echo "Examples:"
-    echo "  ./notes-pull.sh            # Pull from origin"
-    echo "  ./notes-pull.sh upstream   # Pull from upstream"
-    exit 0
-fi
+    echo "  ./notes-pull.sh                    # Pull from origin"
+    echo "  ./notes-pull.sh upstream           # Pull from upstream"
+    echo "  ./notes-pull.sh --auto-stash       # Auto-stash any local changes"
+}
 
-if [[ "$1" == "--no-sync" ]]; then
-    SYNC_AFTER=false
-    REMOTE="${2:-origin}"
-fi
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --auto-stash)
+            AUTO_STASH=true
+            shift
+            ;;
+        --no-sync)
+            SYNC_AFTER=false
+            shift
+            ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        -*)
+            print_error "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+        *)
+            REMOTE="$1"
+            shift
+            ;;
+    esac
+done
 
 # -------------------------------------------
-# Resolve paths
+# Resolve paths (symlink-safe using git)
 # -------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$PROJECT_ROOT" ]; then
+    print_error "Not a git repository."
+    exit 1
+fi
 
-if [[ "$SCRIPT_DIR" == */notes/scripts ]] || [[ "$SCRIPT_DIR" == */*/scripts ]]; then
-    NOTES_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    PROJECT_ROOT="$(cd "$NOTES_ROOT/.." && pwd)"
+# Load configuration
+CONFIG_FILE="$PROJECT_ROOT/notes/.notesrc"
+if [ -f "$CONFIG_FILE" ]; then
+    WORKTREE_DIR=$(grep -o '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+    WORKTREE_DIR="${WORKTREE_DIR#./}"
 else
-    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    NOTES_ROOT="$PROJECT_ROOT/notes"
+    WORKTREE_DIR="notes"
 fi
+
+NOTES_ROOT="$PROJECT_ROOT/$WORKTREE_DIR"
 
 # Verify notes exists
 if [ ! -d "$NOTES_ROOT" ]; then
@@ -72,15 +106,18 @@ print_info "Pulling notes branch '$BRANCH' from $REMOTE..."
 echo ""
 
 # Check for local changes
+STASHED=false
 if [ -n "$(git status --porcelain)" ]; then
-    print_warning "Local changes detected in notes branch"
-    git status --short
-    echo ""
-    read -p "Stash changes before pull? [Y/n]: " stash_choice
-    stash_choice="${stash_choice:-y}"
-    if [[ "$stash_choice" =~ ^[Yy]$ ]]; then
+    if $AUTO_STASH; then
+        print_warning "Local changes detected, auto-stashing..."
         git stash push -m "Auto-stash before notes-pull"
         STASHED=true
+    else
+        print_error "Local changes detected in notes branch."
+        git status --short
+        echo ""
+        echo "Use --auto-stash to automatically stash changes, or commit manually."
+        exit 1
     fi
 fi
 
@@ -88,7 +125,7 @@ fi
 git pull "$REMOTE" "$BRANCH"
 
 # Pop stash if we stashed
-if [ "${STASHED:-false}" = true ]; then
+if $STASHED; then
     echo ""
     print_info "Restoring stashed changes..."
     git stash pop || print_warning "Stash pop failed - check 'git stash list'"
@@ -104,7 +141,7 @@ if $SYNC_AFTER; then
     cd "$PROJECT_ROOT"
     print_info "Running sync to update symlinks..."
     echo ""
-    "$SCRIPT_DIR/sync-notes.sh" --cleanup --quiet
+    "$PROJECT_ROOT/scripts/sync-notes.sh" --cleanup --quiet
     print_success "Symlinks updated!"
     echo ""
 fi

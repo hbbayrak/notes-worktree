@@ -36,17 +36,24 @@ if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
 fi
 
 # -------------------------------------------
-# Resolve paths
+# Resolve paths (symlink-safe using git)
 # -------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
-if [[ "$SCRIPT_DIR" == */notes/scripts ]] || [[ "$SCRIPT_DIR" == */*/scripts ]]; then
-    NOTES_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    PROJECT_ROOT="$(cd "$NOTES_ROOT/.." && pwd)"
-else
-    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    NOTES_ROOT="$PROJECT_ROOT/notes"
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$PROJECT_ROOT" ]; then
+    print_error "Not a git repository."
+    exit 1
 fi
+
+# Load configuration
+CONFIG_FILE="$PROJECT_ROOT/notes/.notesrc"
+if [ -f "$CONFIG_FILE" ]; then
+    WORKTREE_DIR=$(grep -o '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4)
+    WORKTREE_DIR="${WORKTREE_DIR#./}"
+else
+    WORKTREE_DIR="notes"
+fi
+
+NOTES_ROOT="$PROJECT_ROOT/$WORKTREE_DIR"
 
 # Verify notes exists
 if [ ! -d "$NOTES_ROOT" ]; then
