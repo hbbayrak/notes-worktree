@@ -1,0 +1,11 @@
+# Scripts symlink (points to plugin)
+/scripts
+
+# Negate exclusions so files are tracked in notes branch
+!**/README.md
+!CLAUDE.md
+
+# Ignore system files
+.DS_Store
+*.bak
+.sync-notes-paths.tmp

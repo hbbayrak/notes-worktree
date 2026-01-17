@@ -1,0 +1,7 @@
+{
+  "branch": "notes",
+  "worktree": "./notes",
+  "exclusion_method": "gitignore",
+  "exclude_root_readme": true,
+  "exclude_patterns": "SKILL.md,setup-guide.md,CHANGELOG.md"
+}
