@@ -79,14 +79,14 @@ Claude runs:
 
 ## CLI Reference
 
-All scripts are accessed via the `$PROJECT_ROOT/scripts` symlink which points to the plugin directory.
+All scripts are accessed via the `$PROJECT_ROOT/notes/scripts` symlink which points to the plugin directory.
 
 ### init-notes-worktree.sh
 
 Initialize notes worktree setup.
 
 ```bash
-./scripts/init-notes-worktree.sh [OPTIONS]
+./notes/scripts/init-notes-worktree.sh [OPTIONS]
 
 Required:
   --branch NAME        Branch name for documentation (e.g., "notes")
@@ -106,7 +106,7 @@ Optional:
 Sync documentation files between main project and notes worktree.
 
 ```bash
-./scripts/sync-notes.sh [OPTIONS]
+./notes/scripts/sync-notes.sh [OPTIONS]
 
 Options:
   --dry-run            Show what would happen without making changes
@@ -128,7 +128,7 @@ Features:
 Show status of notes worktree setup.
 
 ```bash
-./scripts/status-notes.sh [OPTIONS]
+./notes/scripts/status-notes.sh [OPTIONS]
 
 Options:
   -v, --verbose    Show detailed file listings
@@ -148,7 +148,7 @@ Shows:
 Clean up notes worktree issues.
 
 ```bash
-./scripts/cleanup-notes.sh [OPTIONS]
+./notes/scripts/cleanup-notes.sh [OPTIONS]
 
 Options:
   --dangling       Remove broken symlinks only
@@ -165,7 +165,7 @@ Options:
 Remove notes worktree setup and clean up.
 
 ```bash
-./scripts/teardown-notes.sh [OPTIONS]
+./notes/scripts/teardown-notes.sh [OPTIONS]
 
 Options:
   --keep-branch    Don't delete the notes branch
@@ -180,7 +180,7 @@ Options:
 Quick commit helper for notes branch.
 
 ```bash
-./scripts/notes-commit.sh [MESSAGE]
+./notes/scripts/notes-commit.sh [MESSAGE]
 
 Arguments:
   MESSAGE    Commit message (default: "Update documentation")
@@ -191,7 +191,7 @@ Arguments:
 Push notes branch to remote.
 
 ```bash
-./scripts/notes-push.sh [REMOTE]
+./notes/scripts/notes-push.sh [REMOTE]
 
 Arguments:
   REMOTE    Remote name (default: "origin")
@@ -202,7 +202,7 @@ Arguments:
 Pull notes branch from remote and sync symlinks.
 
 ```bash
-./scripts/notes-pull.sh [OPTIONS] [REMOTE]
+./notes/scripts/notes-pull.sh [OPTIONS] [REMOTE]
 
 Arguments:
   REMOTE           Remote name (default: "origin")
@@ -218,8 +218,42 @@ Options:
 Generate combined markdown from all notes.
 
 ```bash
-./scripts/combine-notes.sh > docs.md
-./scripts/combine-notes.sh | pandoc -o docs.pdf
+./notes/scripts/combine-notes.sh > docs.md
+./notes/scripts/combine-notes.sh | pandoc -o docs.pdf
+```
+
+### manage-excludes.sh
+
+Manage file exclusion patterns for sync operations.
+
+```bash
+./notes/scripts/manage-excludes.sh <command> [OPTIONS] [patterns...]
+
+Commands:
+  list                 Show current exclusion patterns
+  add <patterns>       Add patterns (comma-separated or space-separated)
+  remove <patterns>    Remove patterns
+
+Options:
+  --no-commit          Don't auto-commit .notesrc changes
+  -q, --quiet          Minimal output
+  -h, --help           Show help
+```
+
+Examples:
+```bash
+# View current patterns
+./notes/scripts/manage-excludes.sh list
+
+# Add patterns
+./notes/scripts/manage-excludes.sh add "SKILL.md,CHANGELOG.md"
+./notes/scripts/manage-excludes.sh add TODO.md
+
+# Remove patterns
+./notes/scripts/manage-excludes.sh remove "*.generated.md"
+
+# Add without committing
+./notes/scripts/manage-excludes.sh add "DRAFT.md" --no-commit
 ```
 
 ## Key Concepts
@@ -234,9 +268,9 @@ project/
 ├── src/            # Main branch content
 ├── client/
 │   └── README.md   # Symlink → notes/client/README.md
-├── scripts         # Symlink → plugin scripts directory
 └── notes/          # Worktree (notes branch)
     ├── .git        # Pointer to main .git
+    ├── scripts     # Symlink → plugin scripts directory
     └── client/
         └── README.md  # Actual file
 ```
@@ -249,14 +283,13 @@ Relative symlinks connect original locations to the notes directory:
 
 ### Script Symlink
 
-The `/scripts` symlink points directly to the plugin scripts directory. Scripts are NOT copied into the worktree - they remain in the plugin and are accessed via this symlink.
+The `notes/scripts` symlink (inside the worktree) points directly to the plugin scripts directory. Scripts are NOT copied into the worktree - they remain in the plugin and are accessed via this symlink.
 
 ### Dual Exclusion Strategy
 
 **Main branch exclusion** (`.git/info/exclude` or `.gitignore`):
 ```
 /notes/
-/scripts
 client/README.md
 ```
 
@@ -275,20 +308,20 @@ Create in notes directly:
 ```bash
 mkdir -p notes/server/new-feature
 echo "# New Feature" > notes/server/new-feature/README.md
-./scripts/sync-notes.sh  # Creates symlink
+./notes/scripts/sync-notes.sh  # Creates symlink
 ```
 
 Or create normally and sync:
 ```bash
 echo "# New Feature" > server/new-feature/README.md
-./scripts/sync-notes.sh  # Moves to notes, creates symlink
+./notes/scripts/sync-notes.sh  # Moves to notes, creates symlink
 ```
 
 ### Cloning a Project with Notes
 
 ```bash
 git worktree add ./notes notes
-./scripts/sync-notes.sh  # Creates all symlinks
+./notes/scripts/sync-notes.sh  # Creates all symlinks
 ```
 
 ### Updating Documentation
@@ -296,34 +329,34 @@ git worktree add ./notes notes
 ```bash
 vim client/README.md  # Edit via symlink
 
-./scripts/notes-commit.sh "Update client documentation"
-./scripts/notes-push.sh
+./notes/scripts/notes-commit.sh "Update client documentation"
+./notes/scripts/notes-push.sh
 ```
 
 ### Pulling Remote Changes
 
 ```bash
-./scripts/notes-pull.sh --auto-stash
+./notes/scripts/notes-pull.sh --auto-stash
 ```
 
 ## Troubleshooting
 
 **Dangling symlinks after deleting files:**
 ```bash
-./scripts/status-notes.sh        # Check for issues
-./scripts/sync-notes.sh --cleanup  # Fix them
+./notes/scripts/status-notes.sh        # Check for issues
+./notes/scripts/sync-notes.sh --cleanup  # Fix them
 ```
 
 **Symlink appears in git status:**
-Check that the path is in exclusion file. Run `./scripts/sync-notes.sh` to update exclusions.
+Check that the path is in exclusion file. Run `./notes/scripts/sync-notes.sh` to update exclusions.
 
 **Permission denied on scripts:**
 ```bash
-chmod +x ./scripts/*.sh
+chmod +x ./notes/scripts/*.sh
 ```
 
 **Uninstall completely:**
 ```bash
-./scripts/teardown-notes.sh  # Interactive teardown
-./scripts/teardown-notes.sh --keep-files  # Keep docs as regular files
+./notes/scripts/teardown-notes.sh  # Interactive teardown
+./notes/scripts/teardown-notes.sh --keep-files  # Keep docs as regular files
 ```

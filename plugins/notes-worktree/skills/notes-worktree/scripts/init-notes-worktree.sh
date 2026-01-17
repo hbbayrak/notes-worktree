@@ -210,11 +210,11 @@ print_success "Worktree added."
 echo ""
 
 # -------------------------------------------
-# Create scripts symlink to plugin directory
+# Create scripts symlink to plugin directory (inside worktree)
 # -------------------------------------------
-print_info "Creating scripts symlink to plugin..."
-ln -sf "$SCRIPT_DIR" "$PROJECT_ROOT/scripts"
-print_success "Created: scripts -> $SCRIPT_DIR"
+print_info "Creating scripts symlink inside worktree..."
+ln -sf "$SCRIPT_DIR" "$PROJECT_ROOT/$WORKTREE_DIR/scripts"
+print_success "Created: $WORKTREE_DIR/scripts -> $SCRIPT_DIR"
 echo ""
 
 # -------------------------------------------
@@ -240,7 +240,6 @@ fi
     echo "$EXCLUDE_MARKER"
     echo "# Notes worktree (tracked in $BRANCH_NAME branch)"
     echo "/$WORKTREE_DIR/"
-    echo "/scripts"
 
     if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
         echo ""
@@ -264,7 +263,7 @@ echo ""
 if $MOVE_FILES; then
     print_info "Running initial sync to move .md files..."
     if ! "$SCRIPT_DIR/sync-notes.sh"; then
-        print_warning "Initial sync had issues. Run './scripts/sync-notes.sh' manually to retry."
+        print_warning "Initial sync had issues. Run './$WORKTREE_DIR/scripts/sync-notes.sh' manually to retry."
     fi
 fi
 
@@ -327,7 +326,7 @@ echo "Your notes worktree is ready at ./$WORKTREE_DIR"
 echo ""
 echo "Next steps:"
 echo "  1. Edit documentation in ./$WORKTREE_DIR/ or via symlinks"
-echo "  2. Run ./scripts/sync-notes.sh to sync new .md files"
+echo "  2. Run ./$WORKTREE_DIR/scripts/sync-notes.sh to sync new .md files"
 echo "  3. Commit documentation:"
 echo "     cd $WORKTREE_DIR && git add -A && git commit -m 'Update docs'"
 echo "  4. Push notes branch:"

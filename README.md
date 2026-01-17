@@ -52,11 +52,11 @@ The script will interactively prompt for:
 
 ```bash
 # Sync new documentation files
-./scripts/sync-notes.sh
+./notes/scripts/sync-notes.sh
 
 # Generate combined documentation
-./scripts/combine-notes.sh > all-docs.md
-./scripts/combine-notes.sh | pandoc -o docs.pdf
+./notes/scripts/combine-notes.sh > all-docs.md
+./notes/scripts/combine-notes.sh | pandoc -o docs.pdf
 
 # Commit documentation changes
 cd notes
@@ -73,12 +73,12 @@ project/
 │   └── README.md      # Symlink → notes/client/README.md
 ├── server/
 │   └── README.md      # Symlink → notes/server/README.md
-├── notes/             # Worktree (notes branch)
-│   ├── client/
-│   │   └── README.md  # Actual file
-│   └── server/
-│       └── README.md  # Actual file
-└── scripts → notes/scripts
+└── notes/             # Worktree (notes branch)
+    ├── scripts        # Symlink → plugin scripts
+    ├── client/
+    │   └── README.md  # Actual file
+    └── server/
+        └── README.md  # Actual file
 ```
 
 - **Main branch**: Contains code + symlinks to docs
@@ -98,6 +98,7 @@ project/
 | `notes-push.sh` | Push notes branch to remote |
 | `notes-pull.sh` | Pull and sync symlinks |
 | `combine-notes.sh` | Generate combined markdown document |
+| `manage-excludes.sh` | Add, remove, or list exclusion patterns |
 
 ## Configuration
 

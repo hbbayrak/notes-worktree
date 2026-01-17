@@ -67,7 +67,6 @@ Edit `.git/info/exclude`:
 ```
 # Notes worktree
 /notes/
-/scripts
 
 # Documentation symlinks (add as you create them)
 client/README.md
@@ -81,7 +80,6 @@ Add to `.gitignore`:
 ```
 # Notes worktree
 /notes/
-/scripts
 
 # Documentation symlinks
 **/README.md
@@ -106,8 +104,9 @@ In `notes/.gitignore`:
 
 ### Step 5: Create Scripts Symlink
 
+Create the scripts symlink inside the worktree:
 ```bash
-ln -s notes/scripts scripts
+ln -s /path/to/plugin/scripts notes/scripts
 ```
 
 ## The Dual Exclusion Strategy
@@ -231,12 +230,12 @@ When files are deleted or renamed in the notes branch, symlinks in the main proj
 
 ```bash
 # Check for issues
-./scripts/status-notes.sh
+./notes/scripts/status-notes.sh
 
 # Fix dangling symlinks
-./scripts/sync-notes.sh --cleanup
+./notes/scripts/sync-notes.sh --cleanup
 # or
-./scripts/cleanup-notes.sh --dangling
+./notes/scripts/cleanup-notes.sh --dangling
 ```
 
 ### Stale Exclusion Entries
@@ -245,10 +244,10 @@ When symlinks are removed but exclusion entries remain:
 
 ```bash
 # Check for stale entries
-./scripts/status-notes.sh
+./notes/scripts/status-notes.sh
 
 # Clean them up
-./scripts/cleanup-notes.sh --stale
+./notes/scripts/cleanup-notes.sh --stale
 ```
 
 ### "Branch already exists"
@@ -258,7 +257,7 @@ The init script only creates new branches. If the branch exists:
 1. **Use existing branch**: Set up worktree manually
    ```bash
    git worktree add ./notes notes
-   ./scripts/sync-notes.sh
+   ./notes/scripts/sync-notes.sh
    ```
 
 2. **Choose different name**: Run init with different branch name
@@ -273,7 +272,7 @@ The init script only creates new branches. If the branch exists:
 
 The exclusion file is missing entries. Run:
 ```bash
-./scripts/sync-notes.sh
+./notes/scripts/sync-notes.sh
 ```
 
 Or manually add the path to your exclusion file.
@@ -305,7 +304,7 @@ Conflict: client/README.md
 
 For non-interactive mode (e.g., in scripts):
 ```bash
-./scripts/sync-notes.sh --no-interactive
+./notes/scripts/sync-notes.sh --no-interactive
 ```
 
 This backs up the main version and uses the notes version.
@@ -327,15 +326,13 @@ Resolve by keeping the markers and entries from both branches, then run `sync-no
 Remove and recreate:
 ```bash
 rm client/README.md
-./scripts/sync-notes.sh
+./notes/scripts/sync-notes.sh
 ```
 
 ### Permission Denied on Scripts
 
 ```bash
 chmod +x notes/scripts/*.sh
-# or
-chmod +x scripts/*.sh
 ```
 
 ### Notes Directory Shows Modified Files After Clone
@@ -352,16 +349,16 @@ git checkout -- .
 Use the teardown script to cleanly remove the setup:
 ```bash
 # Preview what would happen
-./scripts/teardown-notes.sh --dry-run
+./notes/scripts/teardown-notes.sh --dry-run
 
 # Full teardown
-./scripts/teardown-notes.sh
+./notes/scripts/teardown-notes.sh
 
 # Keep files as regular files (not symlinks)
-./scripts/teardown-notes.sh --keep-files
+./notes/scripts/teardown-notes.sh --keep-files
 
 # Keep branch for later restoration
-./scripts/teardown-notes.sh --keep-branch
+./notes/scripts/teardown-notes.sh --keep-branch
 ```
 
 ## Team Workflows
@@ -389,7 +386,7 @@ Use the teardown script to cleanly remove the setup:
 After cloning:
 ```bash
 git worktree add ./notes notes
-./scripts/sync-notes.sh
+./notes/scripts/sync-notes.sh
 ```
 
 The `.gitignore` is already configured, symlinks are created by sync.
@@ -417,7 +414,7 @@ If CI doesn't need documentation, the notes worktree can be skipped - the main b
 Run the status command to see the current state of your notes setup:
 
 ```bash
-./scripts/status-notes.sh
+./notes/scripts/status-notes.sh
 ```
 
 Example output:
@@ -440,7 +437,7 @@ Notes branch:
   ○ 1 unpushed commits
 
 Recommendations:
-  Run: ./scripts/sync-notes.sh --cleanup to fix issues
+  Run: ./notes/scripts/sync-notes.sh --cleanup to fix issues
 ```
 
 Use `--verbose` for detailed file listings, or `--quiet` for machine-readable output.
@@ -449,15 +446,15 @@ Use `--verbose` for detailed file listings, or `--quiet` for machine-readable ou
 
 **Cleanup dangling symlinks and stale entries:**
 ```bash
-./scripts/sync-notes.sh --cleanup
+./notes/scripts/sync-notes.sh --cleanup
 # or standalone:
-./scripts/cleanup-notes.sh
+./notes/scripts/cleanup-notes.sh
 ```
 
 **Preview changes before applying:**
 ```bash
-./scripts/sync-notes.sh --cleanup --dry-run
-./scripts/cleanup-notes.sh --dry-run
+./notes/scripts/sync-notes.sh --cleanup --dry-run
+./notes/scripts/cleanup-notes.sh --dry-run
 ```
 
 ## Watch Mode
@@ -465,7 +462,7 @@ Use `--verbose` for detailed file listings, or `--quiet` for machine-readable ou
 Auto-sync documentation as you work:
 
 ```bash
-./scripts/sync-notes.sh --watch
+./notes/scripts/sync-notes.sh --watch
 ```
 
 This requires `fswatch` (macOS) or `inotifywait` (Linux):
@@ -488,21 +485,21 @@ Convenient wrappers for common git operations in the notes branch:
 
 ### Quick Commit
 ```bash
-./scripts/notes-commit.sh                        # Default message
-./scripts/notes-commit.sh "Add API documentation"  # Custom message
+./notes/scripts/notes-commit.sh                        # Default message
+./notes/scripts/notes-commit.sh "Add API documentation"  # Custom message
 ```
 
 ### Push to Remote
 ```bash
-./scripts/notes-push.sh          # Push to origin
-./scripts/notes-push.sh upstream # Push to specific remote
+./notes/scripts/notes-push.sh          # Push to origin
+./notes/scripts/notes-push.sh upstream # Push to specific remote
 ```
 
 Sets upstream automatically on first push.
 
 ### Pull and Sync
 ```bash
-./scripts/notes-pull.sh
+./notes/scripts/notes-pull.sh
 ```
 
 This:
@@ -516,7 +513,7 @@ This:
 To remove the notes worktree setup completely:
 
 ```bash
-./scripts/teardown-notes.sh
+./notes/scripts/teardown-notes.sh
 ```
 
 Options:
@@ -528,16 +525,16 @@ Options:
 Examples:
 ```bash
 # Full teardown with prompts
-./scripts/teardown-notes.sh
+./notes/scripts/teardown-notes.sh
 
 # Keep docs as regular files, remove worktree
-./scripts/teardown-notes.sh --keep-files
+./notes/scripts/teardown-notes.sh --keep-files
 
 # Keep branch for later, just remove worktree
-./scripts/teardown-notes.sh --keep-branch
+./notes/scripts/teardown-notes.sh --keep-branch
 
 # Preview what would happen
-./scripts/teardown-notes.sh --dry-run
+./notes/scripts/teardown-notes.sh --dry-run
 ```
 
 ## VSCode Integration
@@ -577,7 +574,7 @@ The combined markdown output works with:
 
 Example with Pandoc:
 ```bash
-./scripts/combine-notes.sh | pandoc \
+./notes/scripts/combine-notes.sh | pandoc \
   --toc \
   --toc-depth=3 \
   -V geometry:margin=1in \
