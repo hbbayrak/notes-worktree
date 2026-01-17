@@ -30,7 +30,8 @@ notes-worktree/
             ├── notes-commit.sh
             ├── notes-push.sh
             ├── notes-pull.sh
-            └── combine-notes.sh
+            ├── combine-notes.sh
+            └── manage-excludes.sh
 ```
 
 ## Key Scripts
@@ -48,6 +49,7 @@ All scripts are in `plugins/notes-worktree/skills/notes-worktree/scripts/`:
 | `notes-push.sh` | Push notes branch to remote |
 | `notes-pull.sh` | Pull from remote and sync |
 | `combine-notes.sh` | Generate combined markdown document |
+| `manage-excludes.sh` | Add, remove, or list exclusion patterns |
 
 ## Development Commands
 
