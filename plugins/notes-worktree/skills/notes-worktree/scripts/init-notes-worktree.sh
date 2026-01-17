@@ -305,6 +305,25 @@ fi
 print_info "Adding worktree at ./$WORKTREE_DIR..."
 git worktree add "./$WORKTREE_DIR" "$BRANCH_NAME"
 print_success "Worktree added."
+
+# Set up remote tracking and sync if using existing branch from remote
+if $USE_EXISTING_BRANCH && branch_exists_remote "$BRANCH_NAME"; then
+    # Check if upstream is already set
+    UPSTREAM=$(git -C "$PROJECT_ROOT/$WORKTREE_DIR" rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || echo "")
+    if [[ -z "$UPSTREAM" ]]; then
+        print_info "Setting up remote tracking for '$BRANCH_NAME'..."
+        git -C "$PROJECT_ROOT/$WORKTREE_DIR" branch --set-upstream-to="origin/$BRANCH_NAME" "$BRANCH_NAME"
+        print_success "Remote tracking configured."
+    fi
+
+    # Pull latest changes
+    print_info "Syncing with remote..."
+    if git -C "$PROJECT_ROOT/$WORKTREE_DIR" pull --ff-only 2>/dev/null; then
+        print_success "Synced with remote."
+    else
+        print_warning "Could not fast-forward. You may need to manually pull/merge."
+    fi
+fi
 echo ""
 
 # -------------------------------------------
