@@ -22,18 +22,11 @@ resolve_script_dir() {
 SCRIPT_DIR="$(resolve_script_dir)"
 
 # -------------------------------------------
-# Find project root (look for .git directory)
+# Find project root (use git rev-parse for reliability)
 # -------------------------------------------
 find_project_root() {
-    local dir="$PWD"
-    while [[ "$dir" != "/" ]]; do
-        if [[ -d "$dir/.git" ]]; then
-            echo "$dir"
-            return 0
-        fi
-        dir="$(dirname "$dir")"
-    done
-    return 1
+    # Use git's own method - more reliable than walking directories
+    git rev-parse --show-toplevel 2>/dev/null
 }
 
 # -------------------------------------------
