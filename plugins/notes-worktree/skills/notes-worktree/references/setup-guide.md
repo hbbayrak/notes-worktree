@@ -93,10 +93,12 @@ CLAUDE.md
 
 In `notes/.gitignore`:
 ```
+# Scripts symlink (points to plugin, should not be tracked)
+/scripts
+
 # Negate exclusions so files are tracked in notes branch
 !**/README.md
 !CLAUDE.md
-!scripts/
 
 # Ignore system files
 .DS_Store

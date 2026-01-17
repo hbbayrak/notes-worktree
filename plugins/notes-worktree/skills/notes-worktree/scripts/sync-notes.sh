@@ -587,10 +587,12 @@ if $DRY_RUN; then
     log_warning "[DRY-RUN] Would update notes/.gitignore"
 else
     cat > "$NOTES_GITIGNORE" << 'IGNOREEOF'
+# Scripts symlink (points to plugin, should not be tracked)
+/scripts
+
 # Negate exclusions so files are tracked in notes branch
 !**/README.md
 !CLAUDE.md
-!scripts/
 
 # Ignore system files
 .DS_Store
