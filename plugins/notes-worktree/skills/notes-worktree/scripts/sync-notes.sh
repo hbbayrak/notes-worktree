@@ -506,12 +506,14 @@ find "$NOTES_ROOT" \
         log_verbose "  SKIP (regular file): $rel_path"
         continue
     else
+        # Skip if parent directory doesn't exist (respect branch structure)
+        if [ ! -d "$target_dir" ]; then
+            log_verbose "  SKIP (directory doesn't exist): $rel_path"
+            continue
+        fi
         log_normal "  Creating symlink: $rel_path"
         ((REVERSE_COUNT++)) || true
     fi
-
-    # Create parent directory if needed
-    do_action "create directory $target_dir" mkdir -p "$target_dir"
 
     # Create relative symlink
     if ! $DRY_RUN; then
