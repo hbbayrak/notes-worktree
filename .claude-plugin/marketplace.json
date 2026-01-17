@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "notes-worktree-marketplace",
+  "description": "Documentation management using git worktrees and symlinks",
+  "owner": {
+    "name": "hbbayrak",
+    "email": "hbbayrak@users.noreply.github.com"
+  },
+  "plugins": [
+    {
+      "name": "notes-worktree",
+      "description": "Set up a separate git branch for documentation with symlink access - keeps markdown files out of your main branch",
+      "version": "1.0.0",
+      "author": {
+        "name": "hbbayrak",
+        "email": "hbbayrak@users.noreply.github.com"
+      },
+      "source": "./plugins/notes-worktree",
+      "category": "productivity",
+      "homepage": "https://github.com/hbbayrak/notes-worktree"
+    }
+  ]
+}
