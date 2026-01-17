@@ -27,11 +27,26 @@ Use this pattern when:
 
 ## Setup Instructions for Claude
 
-When setting up a notes worktree, use AskUserQuestion to gather configuration, then run the init script with the appropriate parameters.
+When setting up a notes worktree, first check if the branch already exists, then either use existing configuration or ask the user.
 
-### Step 1: Ask for Configuration
+### Step 1: Check for Existing Branch
 
-Use AskUserQuestion to gather these options:
+Before asking any questions, check if the notes branch already exists:
+
+1. Run the init script with just `--branch notes`
+2. The script will automatically:
+   - Check if branch exists locally
+   - If not, check if branch exists on remote and fetch it
+   - If branch exists, read configuration from `.notesrc` file
+   - If branch doesn't exist, require all parameters
+
+**If branch exists**: Skip all questions and proceed with setup using existing configuration.
+
+**If branch is new**: Continue to Step 2 to gather configuration.
+
+### Step 2: Ask for Configuration (New Branches Only)
+
+Only ask these questions if the branch does NOT exist:
 
 1. **Exclusion method**: How should symlinks be hidden from git?
    - `gitignore` - Shared with team via `.gitignore`
@@ -47,10 +62,16 @@ Use AskUserQuestion to gather these options:
    - Example: `SKILL.md,CHANGELOG.md,*.generated.md`
    - Default: empty (no exclusions)
 
-### Step 2: Run Setup Script
+### Step 3: Run Setup Script
 
 The scripts are located in this skill's directory. Run the init script using the skill's scripts path:
 
+**For existing branches** (config read from .notesrc):
+```bash
+<SKILL_SCRIPTS_DIR>/init-notes-worktree.sh --branch notes
+```
+
+**For new branches** (all params required):
 ```bash
 <SKILL_SCRIPTS_DIR>/init-notes-worktree.sh \
   --branch notes \
@@ -63,10 +84,32 @@ The scripts are located in this skill's directory. Run the init script using the
 
 Where `<SKILL_SCRIPTS_DIR>` is the `scripts` subdirectory of this skill's base directory.
 
-### Example Setup Flow
+### Example: Existing Branch Setup
 
 ```
 Claude: I'll set up a notes worktree for documentation management.
+Claude runs: <skill_base_dir>/scripts/init-notes-worktree.sh --branch notes
+
+Script output:
+  Found existing local branch 'notes'
+  Reading configuration from existing branch...
+  Configuration loaded from .notesrc
+  Setting up worktree from existing branch 'notes'...
+
+Claude: Your notes worktree is set up! The configuration was loaded from the existing branch.
+```
+
+### Example: New Branch Setup
+
+```
+Claude: I'll set up a notes worktree for documentation management.
+Claude runs: <skill_base_dir>/scripts/init-notes-worktree.sh --branch notes
+
+Script output:
+  Branch name 'notes' is available.
+  --dir required for new branch
+
+Claude: The branch doesn't exist yet. Let me ask a few questions to configure it.
 [AskUserQuestion: Exclusion method, Move files, VSCode integration, Exclude patterns]
 
 User selects: gitignore, yes, yes, "SKILL.md"
@@ -83,13 +126,15 @@ All scripts are accessed via the `$PROJECT_ROOT/notes/scripts` symlink which poi
 
 ### init-notes-worktree.sh
 
-Initialize notes worktree setup.
+Initialize notes worktree setup. Automatically detects existing branches and reads configuration from `.notesrc`.
 
 ```bash
 ./notes/scripts/init-notes-worktree.sh [OPTIONS]
 
 Required:
   --branch NAME        Branch name for documentation (e.g., "notes")
+
+Required for NEW branches only (auto-detected from .notesrc for existing branches):
   --dir PATH           Worktree directory path (e.g., "./notes")
   --exclusion METHOD   Exclusion method: 'gitignore' or 'exclude'
 
@@ -100,6 +145,8 @@ Optional:
   --vscode             Configure VSCode to hide notes directory
   -h, --help           Show help
 ```
+
+If the branch already exists (locally or on remote), the script reads configuration from the branch's `.notesrc` file and skips questions. This makes it easy to set up the worktree on a new machine or after cloning.
 
 ### sync-notes.sh
 
@@ -319,7 +366,13 @@ echo "# New Feature" > server/new-feature/README.md
 
 ### Cloning a Project with Notes
 
+The init script automatically detects and fetches existing remote branches:
+
 ```bash
+# Option 1: Use the init script (recommended - handles everything)
+./path/to/init-notes-worktree.sh --branch notes
+
+# Option 2: Manual setup
 git worktree add ./notes notes
 ./notes/scripts/sync-notes.sh  # Creates all symlinks
 ```

@@ -22,6 +22,50 @@ init_project_root
 cd "$PROJECT_ROOT"
 
 # -------------------------------------------
+# Helper Functions
+# -------------------------------------------
+
+# Check if branch exists locally
+branch_exists_local() {
+    local branch="$1"
+    git show-ref --verify --quiet "refs/heads/$branch"
+}
+
+# Check if branch exists on remote
+branch_exists_remote() {
+    local branch="$1"
+    git ls-remote --heads origin "$branch" 2>/dev/null | grep -q "$branch"
+}
+
+# Fetch remote branch to local
+fetch_remote_branch() {
+    local branch="$1"
+    git fetch origin "$branch:$branch" 2>/dev/null
+}
+
+# Read config from branch's .notesrc file
+read_config_from_branch() {
+    local branch="$1"
+    local config_content
+
+    if ! config_content=$(git show "$branch:.notesrc" 2>/dev/null); then
+        return 1
+    fi
+
+    # Parse JSON config (basic parsing with grep/sed)
+    WORKTREE_DIR=$(echo "$config_content" | grep '"worktree"' | sed 's/.*"worktree"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | sed 's|^\./||')
+    EXCLUSION_METHOD=$(echo "$config_content" | grep '"exclusion_method"' | sed 's/.*"exclusion_method"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    EXCLUDE_PATTERNS=$(echo "$config_content" | grep '"exclude_patterns"' | sed 's/.*"exclude_patterns"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+
+    # Validate we got the required values
+    if [[ -z "$WORKTREE_DIR" || -z "$EXCLUSION_METHOD" ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
+# -------------------------------------------
 # CLI Argument Parsing
 # -------------------------------------------
 BRANCH_NAME=""
@@ -37,6 +81,8 @@ Usage: init-notes-worktree.sh [OPTIONS]
 
 Required:
   --branch NAME        Branch name for documentation
+
+Required for NEW branches only (auto-detected from .notesrc for existing branches):
   --dir PATH           Worktree directory path
   --exclusion METHOD   Exclusion method: 'gitignore' or 'exclude'
 
@@ -46,6 +92,9 @@ Optional:
                        (e.g., "SKILL.md,CHANGELOG.md,*.generated.md")
   --vscode             Configure VSCode integration
   -h, --help           Show this help
+
+If the branch already exists (locally or on remote), configuration is read
+from the branch's .notesrc file and questions are skipped.
 EOF
 }
 
@@ -62,18 +111,54 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Validate required params
+# Validate branch name is always required
 [[ -z "$BRANCH_NAME" ]] && { print_error "--branch required"; show_usage; exit 1; }
-[[ -z "$WORKTREE_DIR" ]] && { print_error "--dir required"; show_usage; exit 1; }
-[[ -z "$EXCLUSION_METHOD" ]] && { print_error "--exclusion required"; show_usage; exit 1; }
-[[ "$EXCLUSION_METHOD" != "gitignore" && "$EXCLUSION_METHOD" != "exclude" ]] && \
-    { print_error "Invalid exclusion method: use 'gitignore' or 'exclude'"; exit 1; }
 
-# Validate branch name
+# Validate branch name format
 if [[ ! "$BRANCH_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
     print_error "Invalid branch name. Use only letters, numbers, hyphens, and underscores."
     exit 1
 fi
+
+# -------------------------------------------
+# Check for Existing Branch
+# -------------------------------------------
+USE_EXISTING_BRANCH=false
+
+if branch_exists_local "$BRANCH_NAME"; then
+    USE_EXISTING_BRANCH=true
+    print_info "Found existing local branch '$BRANCH_NAME'"
+elif branch_exists_remote "$BRANCH_NAME"; then
+    print_info "Found branch '$BRANCH_NAME' on remote, fetching..."
+    if ! fetch_remote_branch "$BRANCH_NAME"; then
+        print_error "Failed to fetch branch '$BRANCH_NAME' from remote."
+        exit 1
+    fi
+    USE_EXISTING_BRANCH=true
+    print_success "Fetched branch '$BRANCH_NAME' from remote."
+fi
+
+# For existing branches, read config from .notesrc
+if $USE_EXISTING_BRANCH; then
+    print_info "Reading configuration from existing branch..."
+    if ! read_config_from_branch "$BRANCH_NAME"; then
+        print_error "Could not read .notesrc from branch '$BRANCH_NAME'."
+        echo "The branch may not have been created by this tool."
+        echo "Please provide all parameters manually or use a different branch name."
+        exit 1
+    fi
+    print_success "Configuration loaded from .notesrc"
+    # For existing branches, don't move files by default
+    MOVE_FILES=false
+else
+    # New branch - require all parameters
+    [[ -z "$WORKTREE_DIR" ]] && { print_error "--dir required for new branch"; show_usage; exit 1; }
+    [[ -z "$EXCLUSION_METHOD" ]] && { print_error "--exclusion required for new branch"; show_usage; exit 1; }
+fi
+
+# Validate exclusion method
+[[ -n "$EXCLUSION_METHOD" && "$EXCLUSION_METHOD" != "gitignore" && "$EXCLUSION_METHOD" != "exclude" ]] && \
+    { print_error "Invalid exclusion method: use 'gitignore' or 'exclude'"; exit 1; }
 
 # Normalize worktree path
 WORKTREE_DIR="${WORKTREE_DIR#./}"  # Remove leading ./
@@ -87,32 +172,40 @@ echo ""
 print_info "Project: $PROJECT_ROOT"
 echo ""
 
-# Check if branch already exists (local)
-if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
-    print_error "Branch '$BRANCH_NAME' already exists locally."
-    echo "This script only creates NEW branches. Options:"
-    echo "  1. Use a different branch name"
-    echo "  2. Set up worktree manually: git worktree add ./$WORKTREE_DIR $BRANCH_NAME"
-    exit 1
-fi
-
-# Check if branch exists on remote
-if git ls-remote --heads origin "$BRANCH_NAME" 2>/dev/null | grep -q "$BRANCH_NAME"; then
-    print_error "Branch '$BRANCH_NAME' already exists on remote (origin)."
-    echo "This script only creates NEW branches. Options:"
-    echo "  1. Use a different branch name"
-    echo "  2. Fetch and set up: git fetch origin $BRANCH_NAME && git worktree add ./$WORKTREE_DIR $BRANCH_NAME"
-    exit 1
-fi
-
-print_success "Branch name '$BRANCH_NAME' is available."
-echo ""
-
-# Check if directory exists
+# -------------------------------------------
+# Handle Worktree Already Exists
+# -------------------------------------------
 if [ -d "$WORKTREE_PATH" ]; then
-    print_error "Directory '$WORKTREE_DIR' already exists."
-    echo "Please remove it or choose a different directory."
-    exit 1
+    # Check if it's a git worktree
+    if [ -f "$WORKTREE_PATH/.git" ]; then
+        # It's a worktree - check which branch it's on
+        WORKTREE_BRANCH=$(git -C "$WORKTREE_PATH" branch --show-current 2>/dev/null || echo "")
+        if [ "$WORKTREE_BRANCH" = "$BRANCH_NAME" ]; then
+            echo ""
+            print_success "Notes worktree already set up correctly!"
+            echo ""
+            echo "Worktree: ./$WORKTREE_DIR"
+            echo "Branch:   $BRANCH_NAME"
+            echo ""
+            echo "Nothing to do. Your notes worktree is ready."
+            exit 0
+        else
+            print_error "Directory '$WORKTREE_DIR' is a worktree for branch '$WORKTREE_BRANCH', not '$BRANCH_NAME'."
+            echo "Please remove it first or use a different directory."
+            exit 1
+        fi
+    else
+        # Directory exists but not a worktree
+        print_error "Directory '$WORKTREE_DIR' already exists but is not a git worktree."
+        echo "Please remove it or choose a different directory."
+        exit 1
+    fi
+fi
+
+if $USE_EXISTING_BRANCH; then
+    print_info "Setting up worktree from existing branch '$BRANCH_NAME'..."
+else
+    print_success "Branch name '$BRANCH_NAME' is available."
 fi
 
 print_success "Worktree directory: ./$WORKTREE_DIR"
@@ -144,20 +237,21 @@ echo "=========================================="
 echo ""
 
 # -------------------------------------------
-# Create orphan branch
+# Create orphan branch (only for new branches)
 # -------------------------------------------
-print_info "Creating orphan branch '$BRANCH_NAME'..."
+if ! $USE_EXISTING_BRANCH; then
+    print_info "Creating orphan branch '$BRANCH_NAME'..."
 
-# Save current branch
-CURRENT_BRANCH=$(git branch --show-current)
+    # Save current branch
+    CURRENT_BRANCH=$(git branch --show-current)
 
-# Create orphan branch
-git checkout --orphan "$BRANCH_NAME"
-git rm -rf . > /dev/null 2>&1 || true
-git clean -fd > /dev/null 2>&1 || true
+    # Create orphan branch
+    git checkout --orphan "$BRANCH_NAME"
+    git rm -rf . > /dev/null 2>&1 || true
+    git clean -fd > /dev/null 2>&1 || true
 
-# Create initial files
-cat > README.md << 'DOCEOF'
+    # Create initial files
+    cat > README.md << 'DOCEOF'
 # Documentation
 
 This branch contains project documentation managed via git worktree.
@@ -165,8 +259,8 @@ This branch contains project documentation managed via git worktree.
 See the main branch for code and setup instructions.
 DOCEOF
 
-# Create config file
-cat > .notesrc << CONFIGEOF
+    # Create config file
+    cat > .notesrc << CONFIGEOF
 {
   "branch": "$BRANCH_NAME",
   "worktree": "./$WORKTREE_DIR",
@@ -176,8 +270,8 @@ cat > .notesrc << CONFIGEOF
 }
 CONFIGEOF
 
-# Create .gitignore for notes branch (scripts symlink is excluded)
-cat > .gitignore << 'IGNOREEOF'
+    # Create .gitignore for notes branch (scripts symlink is excluded)
+    cat > .gitignore << 'IGNOREEOF'
 # Scripts symlink (points to plugin)
 /scripts
 
@@ -191,15 +285,19 @@ cat > .gitignore << 'IGNOREEOF'
 .sync-notes-paths.tmp
 IGNOREEOF
 
-# Initial commit
-git add -A
-git commit -m "Initialize documentation branch"
+    # Initial commit
+    git add -A
+    git commit -m "Initialize documentation branch"
 
-# Switch back to original branch
-git checkout "$CURRENT_BRANCH"
+    # Switch back to original branch
+    git checkout "$CURRENT_BRANCH"
 
-print_success "Created branch '$BRANCH_NAME' with initial commit."
-echo ""
+    print_success "Created branch '$BRANCH_NAME' with initial commit."
+    echo ""
+else
+    print_info "Using existing branch '$BRANCH_NAME' (skipping branch creation)."
+    echo ""
+fi
 
 # -------------------------------------------
 # Add worktree
