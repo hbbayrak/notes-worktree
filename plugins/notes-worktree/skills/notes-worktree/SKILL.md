@@ -38,18 +38,38 @@ The script prompts for:
 2. **Worktree directory** (default: `./notes`)
 3. **Exclusion method**: `.git/info/exclude` (local) or `.gitignore` (team)
 4. **Whether to move existing .md files**
+5. **VSCode integration** - hide notes from explorer/search
 
 After setup, use these commands:
 
 ```bash
+# Check status of notes setup
+./scripts/status-notes.sh
+
 # Sync new docs and create missing symlinks
 ./scripts/sync-notes.sh
+
+# Sync with cleanup of dangling symlinks
+./scripts/sync-notes.sh --cleanup
+
+# Preview sync changes without making them
+./scripts/sync-notes.sh --dry-run
+
+# Watch for file changes and auto-sync
+./scripts/sync-notes.sh --watch
+
+# Quick commit and push
+./scripts/notes-commit.sh "Add API documentation"
+./scripts/notes-push.sh
+
+# Pull remote changes and sync
+./scripts/notes-pull.sh
 
 # Generate combined documentation
 ./scripts/combine-notes.sh > all-docs.md
 
-# Commit documentation changes
-cd notes && git add -A && git commit -m "Update docs"
+# Clean uninstall
+./scripts/teardown-notes.sh
 ```
 
 ## Key Concepts
@@ -120,16 +140,106 @@ Interactive setup that:
 4. Configures exclusion method
 5. Saves config to `notes/.notesrc`
 6. Optionally runs initial sync
+7. Optionally configures VSCode integration
+
+### status-notes.sh
+
+Health check and status report:
+```bash
+./scripts/status-notes.sh [OPTIONS]
+  -v, --verbose    Show detailed file listings
+  -q, --quiet      Show only errors and summary counts
+```
+
+Shows:
+- Synced files (symlinks pointing to notes)
+- Dangling symlinks (target missing in notes)
+- Notes files without symlinks
+- Stale exclusion entries
+- Uncommitted changes in notes branch
+- Unpushed commits
 
 ### sync-notes.sh
 
-Bidirectional sync that:
-- **Forward**: Moves `.md` files from main project to notes/, creates symlinks
-- **Reverse**: Creates symlinks for files in notes/ lacking them in main project
+Bidirectional sync with multiple modes:
+```bash
+./scripts/sync-notes.sh [OPTIONS]
+  --dry-run        Show what would happen without making changes
+  --cleanup        Remove dangling symlinks and stale exclusions
+  -v, --verbose    Show detailed output
+  -q, --quiet      Show only errors
+  --watch          Watch for file changes and auto-sync
+  --no-interactive Skip interactive conflict prompts
+```
+
+Features:
+- **Forward sync**: Moves `.md` files from main project to notes/, creates symlinks
+- **Reverse sync**: Creates symlinks for files in notes/ lacking them in main project
+- **Conflict resolution**: Interactive prompts to diff, keep main, keep notes, skip, or backup both
+- **Watch mode**: Auto-sync on file changes (requires fswatch or inotifywait)
 - Updates exclusion file based on config
-- Handles conflicts (backs up differing files)
 
 Excludes: `node_modules/`, `.git/`, root `README.md`
+
+### cleanup-notes.sh
+
+Dedicated cleanup script:
+```bash
+./scripts/cleanup-notes.sh [OPTIONS]
+  --dangling    Remove broken symlinks only
+  --stale       Clean stale exclusion entries only
+  --all         Fix everything (default)
+  --dry-run     Show what would be done
+  -v, --verbose Show detailed output
+  -q, --quiet   Show only errors and summary
+```
+
+### teardown-notes.sh
+
+Clean uninstall of the notes worktree setup:
+```bash
+./scripts/teardown-notes.sh [OPTIONS]
+  --keep-branch    Don't delete the notes branch
+  --keep-files     Convert symlinks back to real files
+  --force          Skip confirmation prompts
+  --dry-run        Show what would be done
+```
+
+Steps performed:
+1. Optionally copy files from notes back to original locations
+2. Remove all documentation symlinks
+3. Remove scripts symlink
+4. Clean exclusion file entries
+5. Remove worktree
+6. Optionally delete branch
+
+### notes-commit.sh
+
+Quick commit helper for notes branch:
+```bash
+./scripts/notes-commit.sh [MESSAGE]
+# Default message: "Update documentation"
+```
+
+### notes-push.sh
+
+Push notes branch to remote:
+```bash
+./scripts/notes-push.sh [REMOTE]
+# Default remote: origin
+```
+
+Sets upstream automatically on first push.
+
+### notes-pull.sh
+
+Pull notes branch and sync symlinks:
+```bash
+./scripts/notes-pull.sh [REMOTE]
+# Default remote: origin
+```
+
+Automatically stashes local changes if needed, then syncs symlinks after pull.
 
 ### combine-notes.sh
 
@@ -200,13 +310,31 @@ git push
 
 ## Troubleshooting
 
+**Dangling symlinks after deleting files in notes:**
+```bash
+./scripts/status-notes.sh        # Check for issues
+./scripts/sync-notes.sh --cleanup  # Fix them
+```
+
 **Symlink appears as file in git status:**
 Check that the path is in exclusion file (`.git/info/exclude` or `.gitignore`).
+Run `./scripts/sync-notes.sh` to update exclusions.
 
 **Branch already exists error:**
 The init script only creates new branches. Use existing setup or choose different name.
 
 **Permission denied on scripts:**
 Make scripts executable: `chmod +x notes/scripts/*.sh`
+
+**Want to uninstall completely:**
+```bash
+./scripts/teardown-notes.sh  # Interactive teardown
+./scripts/teardown-notes.sh --keep-files  # Keep docs as regular files
+```
+
+**Check overall health:**
+```bash
+./scripts/status-notes.sh -v  # Verbose status report
+```
 
 See `references/setup-guide.md` for detailed troubleshooting.

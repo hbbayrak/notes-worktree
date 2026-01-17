@@ -227,6 +227,12 @@ print_info "Copying management scripts..."
 SCRIPT_SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 cp "$SCRIPT_SRC_DIR/sync-notes.sh" "$WORKTREE_PATH/scripts/"
 cp "$SCRIPT_SRC_DIR/combine-notes.sh" "$WORKTREE_PATH/scripts/"
+cp "$SCRIPT_SRC_DIR/status-notes.sh" "$WORKTREE_PATH/scripts/"
+cp "$SCRIPT_SRC_DIR/cleanup-notes.sh" "$WORKTREE_PATH/scripts/"
+cp "$SCRIPT_SRC_DIR/teardown-notes.sh" "$WORKTREE_PATH/scripts/"
+cp "$SCRIPT_SRC_DIR/notes-commit.sh" "$WORKTREE_PATH/scripts/"
+cp "$SCRIPT_SRC_DIR/notes-push.sh" "$WORKTREE_PATH/scripts/"
+cp "$SCRIPT_SRC_DIR/notes-pull.sh" "$WORKTREE_PATH/scripts/"
 chmod +x "$WORKTREE_PATH/scripts/"*.sh
 print_success "Scripts copied to $WORKTREE_DIR/scripts/"
 echo ""
@@ -297,6 +303,59 @@ echo ""
 if [[ "$MOVE_FILES" =~ ^[Yy]$ ]]; then
     print_info "Running initial sync to move .md files..."
     "$WORKTREE_PATH/scripts/sync-notes.sh"
+fi
+
+# -------------------------------------------
+# VSCode integration
+# -------------------------------------------
+echo ""
+echo "VSCode Integration"
+echo "------------------"
+echo "Would you like to configure VSCode to hide the notes directory"
+echo "from the file explorer and search results?"
+echo ""
+read -p "Configure VSCode? [y/N]: " VSCODE_CHOICE
+
+if [[ "$VSCODE_CHOICE" =~ ^[Yy]$ ]]; then
+    VSCODE_DIR="$PROJECT_ROOT/.vscode"
+    VSCODE_SETTINGS="$VSCODE_DIR/settings.json"
+
+    mkdir -p "$VSCODE_DIR"
+
+    if [ -f "$VSCODE_SETTINGS" ]; then
+        # Settings file exists - check if we need to add our settings
+        if grep -q '"files.exclude"' "$VSCODE_SETTINGS" 2>/dev/null; then
+            print_warning "VSCode settings.json already has files.exclude configured."
+            echo "Please manually add these entries:"
+            echo '  "files.exclude": { "'$WORKTREE_DIR'/": true }'
+            echo '  "search.exclude": { "'$WORKTREE_DIR'/": true }'
+        else
+            # Try to add to existing JSON (basic approach)
+            print_warning "VSCode settings.json exists but doesn't have files.exclude."
+            echo "Please manually add these entries to .vscode/settings.json:"
+            echo ""
+            echo '  "files.exclude": {'
+            echo '    "'$WORKTREE_DIR'/": true'
+            echo '  },'
+            echo '  "search.exclude": {'
+            echo '    "'$WORKTREE_DIR'/": true'
+            echo '  }'
+        fi
+    else
+        # Create new settings file
+        cat > "$VSCODE_SETTINGS" << VSCODEEOF
+{
+  "files.exclude": {
+    "$WORKTREE_DIR/": true
+  },
+  "search.exclude": {
+    "$WORKTREE_DIR/": true
+  }
+}
+VSCODEEOF
+        print_success "Created .vscode/settings.json"
+        echo "  Notes directory will be hidden in VSCode explorer and search"
+    fi
 fi
 
 # -------------------------------------------

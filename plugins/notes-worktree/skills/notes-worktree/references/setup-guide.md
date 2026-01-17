@@ -225,6 +225,32 @@ readlink -f client/README.md
 
 ## Troubleshooting
 
+### Dangling Symlinks
+
+When files are deleted or renamed in the notes branch, symlinks in the main project become broken:
+
+```bash
+# Check for issues
+./scripts/status-notes.sh
+
+# Fix dangling symlinks
+./scripts/sync-notes.sh --cleanup
+# or
+./scripts/cleanup-notes.sh --dangling
+```
+
+### Stale Exclusion Entries
+
+When symlinks are removed but exclusion entries remain:
+
+```bash
+# Check for stale entries
+./scripts/status-notes.sh
+
+# Clean them up
+./scripts/cleanup-notes.sh --stale
+```
+
 ### "Branch already exists"
 
 The init script only creates new branches. If the branch exists:
@@ -265,6 +291,25 @@ git fetch origin notes:notes
 git worktree add ./notes notes
 ```
 
+### File Conflicts During Sync
+
+When the same file differs between main project and notes, the sync script offers interactive resolution:
+
+```
+Conflict: client/README.md
+  Main version:  245 bytes, modified 2024-01-15
+  Notes version: 312 bytes, modified 2024-01-14
+
+  [d]iff  [m]ain  [n]otes  [s]kip  [b]ackup both
+```
+
+For non-interactive mode (e.g., in scripts):
+```bash
+./scripts/sync-notes.sh --no-interactive
+```
+
+This backs up the main version and uses the notes version.
+
 ### Merge Conflicts in Exclusion Files
 
 If using `.gitignore` and multiple people add different docs, you may get merge conflicts. The sync script uses markers to manage its section:
@@ -300,6 +345,23 @@ After cloning, the notes worktree may show files as modified if line endings dif
 cd notes
 git config core.autocrlf input  # On Mac/Linux
 git checkout -- .
+```
+
+### Want to Start Over
+
+Use the teardown script to cleanly remove the setup:
+```bash
+# Preview what would happen
+./scripts/teardown-notes.sh --dry-run
+
+# Full teardown
+./scripts/teardown-notes.sh
+
+# Keep files as regular files (not symlinks)
+./scripts/teardown-notes.sh --keep-files
+
+# Keep branch for later restoration
+./scripts/teardown-notes.sh --keep-branch
 ```
 
 ## Team Workflows
@@ -348,6 +410,153 @@ If CI needs documentation:
 
 If CI doesn't need documentation, the notes worktree can be skipped - the main branch works independently.
 
+## Health Checks and Status
+
+### Checking Status
+
+Run the status command to see the current state of your notes setup:
+
+```bash
+./scripts/status-notes.sh
+```
+
+Example output:
+```
+Notes Worktree Status
+==========================================
+Branch: notes
+Worktree: ./notes
+
+Files:
+  ✓ 12 synced (symlink → notes file)
+  ⚠ 2 dangling symlinks (target missing)
+  ○ 1 in notes without symlink
+
+Exclusions (exclude):
+  ⚠ 14 entries (2 stale)
+
+Notes branch:
+  ⚠ 3 uncommitted changes
+  ○ 1 unpushed commits
+
+Recommendations:
+  Run: ./scripts/sync-notes.sh --cleanup to fix issues
+```
+
+Use `--verbose` for detailed file listings, or `--quiet` for machine-readable output.
+
+### Fixing Issues
+
+**Cleanup dangling symlinks and stale entries:**
+```bash
+./scripts/sync-notes.sh --cleanup
+# or standalone:
+./scripts/cleanup-notes.sh
+```
+
+**Preview changes before applying:**
+```bash
+./scripts/sync-notes.sh --cleanup --dry-run
+./scripts/cleanup-notes.sh --dry-run
+```
+
+## Watch Mode
+
+Auto-sync documentation as you work:
+
+```bash
+./scripts/sync-notes.sh --watch
+```
+
+This requires `fswatch` (macOS) or `inotifywait` (Linux):
+```bash
+# macOS
+brew install fswatch
+
+# Ubuntu/Debian
+sudo apt-get install inotify-tools
+
+# Fedora
+sudo dnf install inotify-tools
+```
+
+Watch mode monitors the project for `.md` file changes and automatically syncs.
+
+## Git Helpers
+
+Convenient wrappers for common git operations in the notes branch:
+
+### Quick Commit
+```bash
+./scripts/notes-commit.sh                        # Default message
+./scripts/notes-commit.sh "Add API documentation"  # Custom message
+```
+
+### Push to Remote
+```bash
+./scripts/notes-push.sh          # Push to origin
+./scripts/notes-push.sh upstream # Push to specific remote
+```
+
+Sets upstream automatically on first push.
+
+### Pull and Sync
+```bash
+./scripts/notes-pull.sh
+```
+
+This:
+1. Stashes local changes if any
+2. Pulls from remote
+3. Restores stashed changes
+4. Runs sync to update symlinks
+
+## Teardown / Uninstall
+
+To remove the notes worktree setup completely:
+
+```bash
+./scripts/teardown-notes.sh
+```
+
+Options:
+- `--keep-branch`: Don't delete the notes branch (allows reinstalling later)
+- `--keep-files`: Convert symlinks back to real files before removal
+- `--force`: Skip confirmation prompts
+- `--dry-run`: Preview what would happen
+
+Examples:
+```bash
+# Full teardown with prompts
+./scripts/teardown-notes.sh
+
+# Keep docs as regular files, remove worktree
+./scripts/teardown-notes.sh --keep-files
+
+# Keep branch for later, just remove worktree
+./scripts/teardown-notes.sh --keep-branch
+
+# Preview what would happen
+./scripts/teardown-notes.sh --dry-run
+```
+
+## VSCode Integration
+
+During setup, you can optionally configure VSCode to hide the notes directory:
+
+```json
+{
+  "files.exclude": {
+    "notes/": true
+  },
+  "search.exclude": {
+    "notes/": true
+  }
+}
+```
+
+This keeps the notes directory out of the file explorer and search results, since you access documentation via symlinks anyway.
+
 ## Advanced Usage
 
 ### Multiple Documentation Branches
@@ -356,14 +565,6 @@ You can have multiple worktrees for different purposes:
 ```bash
 git worktree add ./docs docs        # Public documentation
 git worktree add ./internal internal-docs  # Internal docs
-```
-
-### Partial Sync
-
-To sync only specific directories:
-```bash
-# Edit sync-notes.sh or create a wrapper
-./scripts/sync-notes.sh --path client/
 ```
 
 ### Integration with Documentation Tools
