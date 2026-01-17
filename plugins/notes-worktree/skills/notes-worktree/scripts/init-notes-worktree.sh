@@ -271,19 +271,28 @@ DOCEOF
 CONFIGEOF
 
     # Create .gitignore for notes branch (scripts symlink is excluded)
-    cat > .gitignore << 'IGNOREEOF'
-# Scripts symlink (points to plugin)
-/scripts
-
-# Negate exclusions so files are tracked in notes branch
-!**/README.md
-!CLAUDE.md
-
-# Ignore system files
-.DS_Store
-*.bak
-.sync-notes-paths.tmp
-IGNOREEOF
+    {
+        echo "# Scripts symlink (points to plugin)"
+        echo "/scripts"
+        echo ""
+        echo "# Negate exclusions so files are tracked in notes branch"
+        echo "!*.md"
+        echo ""
+        # Add exclusion patterns (files to keep in main, not tracked in notes)
+        if [ -n "$EXCLUDE_PATTERNS" ]; then
+            echo "# Files excluded from notes (kept in main branch)"
+            IFS=',' read -ra PATTERNS <<< "$EXCLUDE_PATTERNS"
+            for pattern in "${PATTERNS[@]}"; do
+                pattern=$(echo "$pattern" | xargs)  # trim whitespace
+                echo "$pattern"
+            done
+            echo ""
+        fi
+        echo "# Ignore system files"
+        echo ".DS_Store"
+        echo "*.bak"
+        echo ".sync-notes-paths.tmp"
+    } > .gitignore
 
     # Initial commit
     git add -A
@@ -365,12 +374,20 @@ fi
 
     if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
         echo ""
-        echo "# Documentation symlinks"
-        echo "**/README.md"
-        echo "CLAUDE.md"
+        echo "# Documentation symlinks (all markdown files)"
+        echo "*.md"
         echo ""
-        echo "# Exception: keep root README in main branch"
+        echo "# Exceptions: keep these in main branch"
         echo "!/README.md"
+
+        # Add exclusion patterns as exceptions (files to keep in main branch)
+        if [ -n "$EXCLUDE_PATTERNS" ]; then
+            IFS=',' read -ra PATTERNS <<< "$EXCLUDE_PATTERNS"
+            for pattern in "${PATTERNS[@]}"; do
+                pattern=$(echo "$pattern" | xargs)  # trim whitespace
+                echo "!$pattern"
+            done
+        fi
     fi
 
     echo "$EXCLUDE_END"

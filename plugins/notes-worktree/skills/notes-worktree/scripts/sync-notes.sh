@@ -280,7 +280,7 @@ cleanup_stale_exclusions() {
                 continue
             fi
             # Skip pattern entries for gitignore method
-            if [[ "$line" == "**/README.md" ]] || [[ "$line" == "CLAUDE.md" ]] || [[ "$line" == "!/README.md" ]]; then
+            if [[ "$line" == "*.md" ]] || [[ "$line" == "!/README.md" ]] || [[ "$line" == "!"* ]]; then
                 continue
             fi
 
@@ -567,15 +567,23 @@ else
         echo "# Notes worktree (tracked in notes branch)"
         echo "/$WORKTREE_DIR/"
         echo ""
-        echo "# Documentation symlinks"
+        echo "# Documentation symlinks (all markdown files)"
 
         if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
-            # For .gitignore, use patterns
-            echo "**/README.md"
-            echo "CLAUDE.md"
+            # For .gitignore, ignore all markdown
+            echo "*.md"
             echo ""
-            echo "# Exception: keep root README in main branch"
+            echo "# Exceptions: keep these in main branch"
             echo "!/README.md"
+
+            # Add exclusion patterns as exceptions (files to keep in main branch)
+            if [ -n "$EXCLUDE_PATTERNS" ]; then
+                IFS=',' read -ra PATTERNS <<< "$EXCLUDE_PATTERNS"
+                for pattern in "${PATTERNS[@]}"; do
+                    pattern=$(echo "$pattern" | xargs)  # trim whitespace
+                    echo "!$pattern"
+                done
+            fi
         else
             # For .git/info/exclude, list specific files
             if [ -f "$TEMP_PATHS" ]; then
@@ -599,10 +607,26 @@ if $DRY_RUN; then
     log_warning "[DRY-RUN] Would update notes/.gitignore"
 else
     # Generate expected content
-    EXPECTED_CONTENT="# Negate exclusions so files are tracked in notes branch
-!**/README.md
-!CLAUDE.md
+    EXPECTED_CONTENT="# Scripts symlink (points to plugin)
 /scripts
+
+# Negate exclusions so files are tracked in notes branch
+!*.md"
+
+    # Add exclusion patterns (files to keep in main, not tracked in notes)
+    if [ -n "$EXCLUDE_PATTERNS" ]; then
+        EXPECTED_CONTENT="$EXPECTED_CONTENT
+
+# Files excluded from notes (kept in main branch)"
+        IFS=',' read -ra PATTERNS <<< "$EXCLUDE_PATTERNS"
+        for pattern in "${PATTERNS[@]}"; do
+            pattern=$(echo "$pattern" | xargs)  # trim whitespace
+            EXPECTED_CONTENT="$EXPECTED_CONTENT
+$pattern"
+        done
+    fi
+
+    EXPECTED_CONTENT="$EXPECTED_CONTENT
 
 # Ignore system files
 .DS_Store
