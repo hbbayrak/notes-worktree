@@ -553,13 +553,19 @@ else
         fi
     fi
 
+    # Remove trailing blank lines before appending managed section
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS: remove trailing blank lines
+        sed -i '' -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$EXCLUSION_FILE" 2>/dev/null || true
+    else
+        sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$EXCLUSION_FILE" 2>/dev/null || true
+    fi
+
     # Add new managed entries
     {
-        echo ""
         echo "$EXCLUDE_MARKER"
         echo "# Notes worktree (tracked in notes branch)"
         echo "/$WORKTREE_DIR/"
-        echo "/scripts"
         echo ""
         echo "# Documentation symlinks"
 
@@ -592,21 +598,23 @@ log_normal "Updating notes/.gitignore..."
 if $DRY_RUN; then
     log_warning "[DRY-RUN] Would update notes/.gitignore"
 else
-    cat > "$NOTES_GITIGNORE" << 'IGNOREEOF'
-# Scripts symlink (points to plugin, should not be tracked)
-/scripts
-
-# Negate exclusions so files are tracked in notes branch
+    # Generate expected content
+    EXPECTED_CONTENT="# Negate exclusions so files are tracked in notes branch
 !**/README.md
 !CLAUDE.md
+/scripts
 
 # Ignore system files
 .DS_Store
 *.bak
 *.main.bak
 *.notes.bak
-.sync-notes-paths.tmp
-IGNOREEOF
+.sync-notes-paths.tmp"
+
+    # Only update if content differs (avoid unnecessary changes)
+    if [ ! -f "$NOTES_GITIGNORE" ] || [ "$(cat "$NOTES_GITIGNORE")" != "$EXPECTED_CONTENT" ]; then
+        echo "$EXPECTED_CONTENT" > "$NOTES_GITIGNORE"
+    fi
 fi
 
 # -------------------------------------------
