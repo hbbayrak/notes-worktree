@@ -468,9 +468,10 @@ find "$NOTES_ROOT" \
         continue
     fi
 
-    # Skip root README.md if project has its own (intentional separation)
-    if [[ "$rel_path" == "README.md" ]] && [ -f "$PROJECT_ROOT/README.md" ] && [ ! -L "$PROJECT_ROOT/README.md" ]; then
-        log_verbose "  SKIP (project has own README): $rel_path"
+    # Always skip root README.md - the notes branch README is internal documentation
+    # about the notes branch itself, not project documentation
+    if [[ "$rel_path" == "README.md" ]]; then
+        log_verbose "  SKIP (notes branch internal README): $rel_path"
         continue
     fi
 

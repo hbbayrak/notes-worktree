@@ -252,11 +252,7 @@ if ! $USE_EXISTING_BRANCH; then
 
     # Create initial files
     cat > README.md << 'DOCEOF'
-# Documentation
-
 This branch contains project documentation managed via git worktree.
-
-See the main branch for code and setup instructions.
 DOCEOF
 
     # Create config file
