@@ -90,7 +90,13 @@ project/
 | Script | Purpose |
 |--------|---------|
 | `init-notes-worktree.sh` | Interactive setup for new projects |
-| `sync-notes.sh` | Bidirectional sync of markdown files |
+| `sync-notes.sh` | Bidirectional sync with --dry-run, --cleanup, --watch |
+| `status-notes.sh` | Health check and sync status report |
+| `cleanup-notes.sh` | Fix dangling symlinks and stale exclusions |
+| `teardown-notes.sh` | Clean uninstall of the setup |
+| `notes-commit.sh` | Quick commit helper for notes branch |
+| `notes-push.sh` | Push notes branch to remote |
+| `notes-pull.sh` | Pull and sync symlinks |
 | `combine-notes.sh` | Generate combined markdown document |
 
 ## Configuration
