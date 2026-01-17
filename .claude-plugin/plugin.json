@@ -1,0 +1,5 @@
+{
+  "name": "notes-worktree",
+  "version": "1.0.0",
+  "description": "Set up a separate git branch for documentation with symlink access - keeps markdown files out of your main branch while maintaining contextual access"
+}
