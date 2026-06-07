@@ -59,6 +59,9 @@ init_project_root
 load_notes_config
 verify_notes_worktree
 
+# Heal a stale/dangling notes/scripts symlink (e.g. after a plugin upgrade)
+ensure_scripts_symlink
+
 # -------------------------------------------
 # Collect status information
 # -------------------------------------------
@@ -183,6 +186,9 @@ if ! $QUIET; then
     echo "=========================================="
     print_info "Branch: $BRANCH_NAME"
     print_info "Worktree: ./$WORKTREE_DIR"
+    if ${SCRIPTS_SYMLINK_REPAIRED:-false}; then
+        echo -e "  ${YELLOW}⚠${NC} notes/scripts symlink was stale — repaired to current plugin version"
+    fi
     echo ""
 fi
 

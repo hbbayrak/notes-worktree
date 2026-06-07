@@ -187,11 +187,18 @@ if [ -d "$WORKTREE_PATH" ]; then
         # It's a worktree - check which branch it's on
         WORKTREE_BRANCH=$(git -C "$WORKTREE_PATH" branch --show-current 2>/dev/null || echo "")
         if [ "$WORKTREE_BRANCH" = "$BRANCH_NAME" ]; then
+            # Refresh the scripts symlink in case the plugin was upgraded since setup
+            NOTES_ROOT="$WORKTREE_PATH"
+            ensure_scripts_symlink
             echo ""
             print_success "Notes worktree already set up correctly!"
             echo ""
             echo "Worktree: ./$WORKTREE_DIR"
             echo "Branch:   $BRANCH_NAME"
+            if ${SCRIPTS_SYMLINK_REPAIRED:-false}; then
+                echo ""
+                echo "(Refreshed notes/scripts symlink to the current plugin version.)"
+            fi
             echo ""
             echo "Nothing to do. Your notes worktree is ready."
             exit 0

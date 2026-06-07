@@ -288,9 +288,26 @@ if $FIX_STALE; then
 fi
 
 # -------------------------------------------
+# Fix stale scripts symlink (points at an old plugin version after upgrade)
+# -------------------------------------------
+SCRIPTS_LINK_FIXED=0
+_sl="$NOTES_ROOT/scripts"
+if [ -d "$SCRIPT_DIR" ] && [ -L "$_sl" ] && [ "$(readlink "$_sl" 2>/dev/null || echo "")" != "$SCRIPT_DIR" ]; then
+    if $DRY_RUN; then
+        if ! $QUIET; then print_warning "[DRY-RUN] Would repair stale notes/scripts symlink"; echo ""; fi
+    else
+        ensure_scripts_symlink
+        if ${SCRIPTS_SYMLINK_REPAIRED:-false}; then
+            SCRIPTS_LINK_FIXED=1
+            if ! $QUIET; then print_success "Repaired notes/scripts symlink to current plugin version"; echo ""; fi
+        fi
+    fi
+fi
+
+# -------------------------------------------
 # Summary
 # -------------------------------------------
-TOTAL_ISSUES=$((DANGLING_COUNT + STALE_COUNT))
+TOTAL_ISSUES=$((DANGLING_COUNT + STALE_COUNT + SCRIPTS_LINK_FIXED))
 
 if $QUIET; then
     if $DRY_RUN; then
