@@ -65,9 +65,9 @@ chmod +x plugins/notes-worktree/skills/notes-worktree/scripts/*.sh
 
 ### Bash Scripts
 - All scripts source `_common.sh` for shared utilities
-- Use `set -euo pipefail` for strict error handling
-- Logging functions: `log_info`, `log_warn`, `log_error`, `log_success`
-- Color output via ANSI codes (with `NO_COLOR` support)
+- Use `set -euo pipefail` for strict error handling; `log_*` helpers `return 0` so they never abort a script under `set -e`
+- Logging functions: `log_info`, `log_warning`, `log_error`, `log_success`
+- Color output via ANSI codes, automatically disabled when `NO_COLOR` is set or stdout is not a TTY
 - Scripts are designed to be idempotent and safe to re-run
 
 ### Configuration
@@ -77,7 +77,7 @@ chmod +x plugins/notes-worktree/skills/notes-worktree/scripts/*.sh
 
 ### Key Functions in `_common.sh`
 - `find_project_root` - Locate git repository root
-- `load_config` - Load `.notesrc` configuration
+- `load_notes_config` - Load `.notesrc` configuration
 - `log_*` functions - Consistent logging output
 
 ## Core Concepts
