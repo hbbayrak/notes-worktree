@@ -1,5 +1,14 @@
 {
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
   "name": "notes-worktree",
-  "version": "1.0.0",
-  "description": "Set up a separate git branch for documentation with symlink access - keeps markdown files out of your main branch while maintaining contextual access"
+  "version": "2.0.0",
+  "description": "Set up a separate git branch for documentation with symlink access - keeps markdown files out of your main branch while maintaining contextual access",
+  "author": {
+    "name": "hbbayrak",
+    "email": "hbbayrak@users.noreply.github.com"
+  },
+  "homepage": "https://github.com/hbbayrak/notes-worktree",
+  "repository": "https://github.com/hbbayrak/notes-worktree",
+  "license": "MIT",
+  "keywords": ["documentation", "git-worktree", "symlinks", "markdown", "notes", "orphan-branch"]
 }

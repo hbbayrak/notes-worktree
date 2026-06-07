@@ -4,7 +4,7 @@
 # - Clean stale exclusion entries (paths no longer exist)
 # - Standalone script for quick fixes without full sync
 
-set -e
+set -euo pipefail
 
 # Source common utilities (resolve symlinks)
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
@@ -134,7 +134,7 @@ if $FIX_DANGLING; then
 
         if [ ! -f "$full_target" ]; then
             rel_path="${symlink#$PROJECT_ROOT/}"
-            ((DANGLING_COUNT++))
+            ((DANGLING_COUNT++)) || true
 
             if $DRY_RUN; then
                 print_warning "[DRY-RUN] Would remove: $rel_path"
@@ -198,14 +198,14 @@ if $FIX_STALE; then
                     continue
                 fi
                 # Skip pattern entries for gitignore method
-                if [[ "$line" == "**/README.md" ]] || [[ "$line" == "CLAUDE.md" ]] || [[ "$line" == "!/README.md" ]]; then
+                if [[ "$line" == "*.md" ]] || [[ "$line" == "!"* ]]; then
                     continue
                 fi
 
                 check_path="$PROJECT_ROOT/$line"
                 if [ ! -L "$check_path" ] && [ ! -f "$check_path" ]; then
                     STALE_ENTRIES+=("$line")
-                    ((STALE_COUNT++))
+                    ((STALE_COUNT++)) || true
                 fi
             fi
         done < "$EXCLUSION_FILE"
@@ -224,8 +224,9 @@ if $FIX_STALE; then
             # Actually remove stale entries by rebuilding the managed section
             if ! $DRY_RUN; then
                 # Extract content before and after managed section
-                BEFORE_MARKER=$(sed -n "1,/$EXCLUDE_MARKER/p" "$EXCLUSION_FILE" | head -n -1)
-                AFTER_MARKER=$(sed -n "/$EXCLUDE_END/,\$p" "$EXCLUSION_FILE" | tail -n +2)
+                # Literal-line matching (immune to regex metachars in markers, BSD-portable)
+                BEFORE_MARKER=$(awk -v m="$EXCLUDE_MARKER" '$0==m{exit} {print}' "$EXCLUSION_FILE")
+                AFTER_MARKER=$(awk -v m="$EXCLUDE_END" 'p{print} $0==m{p=1}' "$EXCLUSION_FILE")
 
                 # Rebuild with valid entries only
                 {

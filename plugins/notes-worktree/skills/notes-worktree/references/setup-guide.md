@@ -363,6 +363,28 @@ Use the teardown script to cleanly remove the setup:
 ./notes/scripts/teardown-notes.sh --keep-branch
 ```
 
+### Quick Fixes Reference
+
+**Dangling symlinks after deleting files:**
+```bash
+./notes/scripts/status-notes.sh        # Check for issues
+./notes/scripts/sync-notes.sh --cleanup  # Fix them
+```
+
+**Symlink appears in git status:**
+Check that the path is in the exclusion file. Run `./notes/scripts/sync-notes.sh` to update exclusions.
+
+**Permission denied on scripts:**
+```bash
+chmod +x ./notes/scripts/*.sh
+```
+
+**Uninstall completely:**
+```bash
+./notes/scripts/teardown-notes.sh  # Interactive teardown
+./notes/scripts/teardown-notes.sh --keep-files  # Keep docs as regular files
+```
+
 ## Team Workflows
 
 ### Initial Setup (Team Lead)
@@ -480,6 +502,189 @@ sudo dnf install inotify-tools
 ```
 
 Watch mode monitors the project for `.md` file changes and automatically syncs.
+
+## Full CLI Reference
+
+All scripts are accessed via the `$PROJECT_ROOT/notes/scripts` symlink which points to the plugin directory.
+
+### init-notes-worktree.sh
+
+Initialize notes worktree setup. Automatically detects existing branches and reads configuration from `.notesrc`.
+
+```bash
+./notes/scripts/init-notes-worktree.sh [OPTIONS]
+
+Required:
+  --branch NAME        Branch name for documentation (e.g., "notes")
+
+Required for NEW branches only (auto-detected from .notesrc for existing branches):
+  --dir PATH           Worktree directory path (e.g., "./notes")
+  --exclusion METHOD   Exclusion method: 'gitignore' or 'exclude'
+
+Optional:
+  --move-files         Move existing .md files to notes and create symlinks
+  --exclude PATTERNS   Comma-separated file patterns to exclude from sync
+                       (e.g., "SKILL.md,CHANGELOG.md,*.generated.md")
+  --vscode             Configure VSCode to hide notes directory
+  -h, --help           Show help
+```
+
+If the branch already exists (locally or on remote), the script reads configuration from the branch's `.notesrc` file and skips questions. This makes it easy to set up the worktree on a new machine or after cloning.
+
+### sync-notes.sh
+
+Sync documentation files between main project and notes worktree.
+
+```bash
+./notes/scripts/sync-notes.sh [OPTIONS]
+
+Options:
+  --dry-run            Show what would happen without making changes
+  --cleanup            Remove dangling symlinks and stale exclusions
+  -v, --verbose        Show detailed output
+  -q, --quiet          Show only errors
+  --watch              Watch for file changes and auto-sync
+  --no-interactive     Skip interactive conflict prompts
+  -h, --help           Show help
+```
+
+Features:
+- **Forward sync**: Moves `.md` files from main project to notes, creates symlinks
+- **Reverse sync**: Creates symlinks for files in notes lacking them in main
+- **Auto-gitignore**: Non-README/CLAUDE files are automatically untracked when using gitignore exclusion
+
+### status-notes.sh
+
+Show status of notes worktree setup.
+
+```bash
+./notes/scripts/status-notes.sh [OPTIONS]
+
+Options:
+  -v, --verbose    Show detailed file listings
+  -q, --quiet      Show only errors and summary counts
+  -h, --help       Show help
+```
+
+Shows:
+- Synced files (symlinks pointing to notes)
+- Dangling symlinks (target missing)
+- Notes files without symlinks
+- Stale exclusion entries
+- Uncommitted/unpushed changes
+
+### cleanup-notes.sh
+
+Clean up notes worktree issues.
+
+```bash
+./notes/scripts/cleanup-notes.sh [OPTIONS]
+
+Options:
+  --dangling       Remove broken symlinks only
+  --stale          Clean stale exclusion entries only
+  --all            Fix everything (default)
+  --dry-run        Show what would be done
+  -v, --verbose    Show detailed output
+  -q, --quiet      Show only summary
+  -h, --help       Show help
+```
+
+### teardown-notes.sh
+
+Remove notes worktree setup and clean up. This deletes the worktree and (unless `--keep-branch`) the notes branch, so confirm with the user and prefer `--dry-run` first.
+
+```bash
+./notes/scripts/teardown-notes.sh [OPTIONS]
+
+Options:
+  --keep-branch    Don't delete the notes branch
+  --keep-files     Convert symlinks back to real files
+  --force          Skip confirmation prompts
+  --dry-run        Show what would be done
+  -h, --help       Show help
+```
+
+### notes-commit.sh
+
+Quick commit helper for notes branch.
+
+```bash
+./notes/scripts/notes-commit.sh [MESSAGE]
+
+Arguments:
+  MESSAGE    Commit message (default: "Update documentation")
+```
+
+### notes-push.sh
+
+Push notes branch to remote.
+
+```bash
+./notes/scripts/notes-push.sh [REMOTE]
+
+Arguments:
+  REMOTE    Remote name (default: "origin")
+```
+
+### notes-pull.sh
+
+Pull notes branch from remote and sync symlinks.
+
+```bash
+./notes/scripts/notes-pull.sh [OPTIONS] [REMOTE]
+
+Arguments:
+  REMOTE           Remote name (default: "origin")
+
+Options:
+  --auto-stash     Automatically stash local changes before pull
+  --no-sync        Skip running sync after pull
+  -h, --help       Show help
+```
+
+### combine-notes.sh
+
+Generate combined markdown from all notes.
+
+```bash
+./notes/scripts/combine-notes.sh > docs.md
+./notes/scripts/combine-notes.sh | pandoc -o docs.pdf
+```
+
+### manage-excludes.sh
+
+Manage file exclusion patterns for sync operations.
+
+```bash
+./notes/scripts/manage-excludes.sh <command> [OPTIONS] [patterns...]
+
+Commands:
+  list                 Show current exclusion patterns
+  add <patterns>       Add patterns (comma-separated or space-separated)
+  remove <patterns>    Remove patterns
+
+Options:
+  --no-commit          Don't auto-commit .notesrc changes
+  -q, --quiet          Minimal output
+  -h, --help           Show help
+```
+
+Examples:
+```bash
+# View current patterns
+./notes/scripts/manage-excludes.sh list
+
+# Add patterns
+./notes/scripts/manage-excludes.sh add "SKILL.md,CHANGELOG.md"
+./notes/scripts/manage-excludes.sh add TODO.md
+
+# Remove patterns
+./notes/scripts/manage-excludes.sh remove "*.generated.md"
+
+# Add without committing
+./notes/scripts/manage-excludes.sh add "DRAFT.md" --no-commit
+```
 
 ## Git Helpers
 

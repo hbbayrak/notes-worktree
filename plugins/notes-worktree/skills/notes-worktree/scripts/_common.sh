@@ -32,12 +32,16 @@ find_project_root() {
 # -------------------------------------------
 # Colors for output
 # -------------------------------------------
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    CYAN='\033[0;36m'
+    NC='\033[0m' # No Color
+else
+    RED=''; GREEN=''; YELLOW=''; BLUE=''; CYAN=''; NC=''
+fi
 
 # -------------------------------------------
 # Logging functions
@@ -48,12 +52,12 @@ print_warning() { echo -e "${YELLOW}$1${NC}"; }
 print_info() { echo -e "${BLUE}$1${NC}"; }
 
 # Verbosity-aware logging (requires QUIET and VERBOSE variables)
-log_error() { echo -e "${RED}ERROR: $1${NC}" >&2; }
-log_success() { ${QUIET:-false} || echo -e "${GREEN}$1${NC}"; }
-log_warning() { ${QUIET:-false} || echo -e "${YELLOW}$1${NC}"; }
-log_info() { ${QUIET:-false} || echo -e "${BLUE}$1${NC}"; }
-log_verbose() { ${VERBOSE:-false} && echo -e "${CYAN}$1${NC}"; }
-log_normal() { ${QUIET:-false} || echo "$1"; }
+log_error()   { echo -e "${RED}ERROR: $1${NC}" >&2; return 0; }
+log_success() { ${QUIET:-false} || echo -e "${GREEN}$1${NC}"; return 0; }
+log_warning() { ${QUIET:-false} || echo -e "${YELLOW}$1${NC}"; return 0; }
+log_info()    { ${QUIET:-false} || echo -e "${BLUE}$1${NC}"; return 0; }
+log_verbose() { ${VERBOSE:-false} && echo -e "${CYAN}$1${NC}"; return 0; }
+log_normal()  { ${QUIET:-false} || echo "$1"; return 0; }
 
 # -------------------------------------------
 # Initialize project root
@@ -71,13 +75,33 @@ init_project_root() {
 load_notes_config() {
     local config_file="$PROJECT_ROOT/notes/.notesrc"
 
+    if [ ! -f "$config_file" ]; then
+        # Worktree dir may be custom — find the notes worktree's .notesrc via git.
+        local _wt
+        while IFS= read -r _wt; do
+            [ -n "$_wt" ] || continue
+            if [ -f "$_wt/.notesrc" ]; then
+                config_file="$_wt/.notesrc"
+                break
+            fi
+        done < <(git -C "$PROJECT_ROOT" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
+    fi
+
     if [ -f "$config_file" ]; then
-        # Parse JSON config (basic parsing without jq dependency)
-        EXCLUSION_METHOD=$(grep -o '"exclusion_method"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | cut -d'"' -f4)
-        WORKTREE_DIR=$(grep -o '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | cut -d'"' -f4)
+        if command -v jq >/dev/null 2>&1; then
+            # Parse JSON config with jq (fast path)
+            EXCLUSION_METHOD=$(jq -r '.exclusion_method // ""' "$config_file")
+            WORKTREE_DIR=$(jq -r '.worktree // ""' "$config_file")
+            BRANCH_NAME=$(jq -r '.branch // ""' "$config_file")
+            EXCLUDE_PATTERNS=$(jq -r '.exclude_patterns // ""' "$config_file")
+        else
+            # Parse JSON config (basic parsing without jq dependency)
+            EXCLUSION_METHOD=$(grep -o '"exclusion_method"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | cut -d'"' -f4 || true)
+            WORKTREE_DIR=$(grep -o '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | cut -d'"' -f4 || true)
+            BRANCH_NAME=$(grep -o '"branch"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | cut -d'"' -f4 || true)
+            EXCLUDE_PATTERNS=$(grep -o '"exclude_patterns"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | cut -d'"' -f4 || true)
+        fi
         WORKTREE_DIR="${WORKTREE_DIR#./}"  # Remove leading ./
-        BRANCH_NAME=$(grep -o '"branch"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | cut -d'"' -f4)
-        EXCLUDE_PATTERNS=$(grep -o '"exclude_patterns"[[:space:]]*:[[:space:]]*"[^"]*"' "$config_file" | cut -d'"' -f4)
     else
         # Default configuration
         EXCLUSION_METHOD="exclude"

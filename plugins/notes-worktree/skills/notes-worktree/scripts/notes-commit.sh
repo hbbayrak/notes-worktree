@@ -2,7 +2,7 @@
 # Quick commit helper for notes branch
 # Usage: notes-commit.sh [message]
 
-set -e
+set -euo pipefail
 
 # Source common utilities (resolve symlinks)
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
@@ -19,7 +19,7 @@ source "$SCRIPT_DIR/_common.sh"
 # -------------------------------------------
 MESSAGE="${1:-Update documentation}"
 
-if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
     echo "Usage: notes-commit.sh [MESSAGE]"
     echo ""
     echo "Stage all changes in notes branch and commit."
@@ -74,7 +74,7 @@ echo ""
 # Check for unpushed commits
 UPSTREAM=$(git rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || echo "")
 if [ -n "$UPSTREAM" ]; then
-    UNPUSHED=$(git rev-list "$UPSTREAM..HEAD" 2>/dev/null | wc -l | tr -d ' ')
+    UNPUSHED=$(git rev-list "$UPSTREAM..HEAD" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
     if [ "$UNPUSHED" -gt 0 ]; then
         echo "You have $UNPUSHED unpushed commit(s)."
         echo "Run: ./scripts/notes-push.sh"

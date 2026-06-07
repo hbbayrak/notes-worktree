@@ -7,7 +7,7 @@
 # - Remove git worktree
 # - Optionally delete the notes branch
 
-set -e
+set -euo pipefail
 
 # Source common utilities (resolve symlinks)
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
@@ -109,7 +109,7 @@ echo ""
 
 # Check for uncommitted changes in notes
 cd "$NOTES_ROOT"
-UNCOMMITTED=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+UNCOMMITTED=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ' || echo 0)
 cd "$PROJECT_ROOT"
 
 if [ "$UNCOMMITTED" -gt 0 ]; then
@@ -129,7 +129,7 @@ cd "$NOTES_ROOT"
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
 UPSTREAM=$(git rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || echo "")
 if [ -n "$UPSTREAM" ]; then
-    UNPUSHED=$(git rev-list "$UPSTREAM..HEAD" 2>/dev/null | wc -l | tr -d ' ')
+    UNPUSHED=$(git rev-list "$UPSTREAM..HEAD" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
     if [ "$UNPUSHED" -gt 0 ]; then
         print_warning "WARNING: $UNPUSHED unpushed commits in notes branch!"
         echo ""
@@ -176,7 +176,7 @@ echo "Step 1: Processing documentation symlinks..."
 SYMLINK_COUNT=0
 while IFS= read -r -d '' symlink; do
     rel_path="${symlink#$PROJECT_ROOT/}"
-    ((SYMLINK_COUNT++))
+    ((SYMLINK_COUNT++)) || true
 
     if $KEEP_FILES; then
         # Get the target file
@@ -227,6 +227,7 @@ echo ""
 # -------------------------------------------
 echo "Step 2: Removing scripts symlink..."
 
+# Removes a vestigial root-level "scripts" symlink only if one is present.
 SCRIPTS_LINK="$PROJECT_ROOT/scripts"
 if [ -L "$SCRIPTS_LINK" ]; then
     if $DRY_RUN; then
@@ -246,15 +247,15 @@ echo ""
 echo "Step 3: Cleaning exclusion entries..."
 
 if [ -f "$EXCLUSION_FILE" ]; then
-    if grep -q "$EXCLUDE_MARKER" "$EXCLUSION_FILE" 2>/dev/null; then
+    if grep -qF "$EXCLUDE_MARKER" "$EXCLUSION_FILE" 2>/dev/null; then
         if $DRY_RUN; then
             print_info "[DRY-RUN] Would remove managed entries from $EXCLUSION_FILE"
         else
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                sed -i '' "/$EXCLUDE_MARKER/,/$EXCLUDE_END/d" "$EXCLUSION_FILE"
-            else
-                sed -i "/$EXCLUDE_MARKER/,/$EXCLUDE_END/d" "$EXCLUSION_FILE"
-            fi
+            awk -v start="$EXCLUDE_MARKER" -v end="$EXCLUDE_END" '
+                $0 == start { skip=1 }
+                skip { if ($0 == end) skip=0; next }
+                { print }
+            ' "$EXCLUSION_FILE" > "$EXCLUSION_FILE.tmp" && mv "$EXCLUSION_FILE.tmp" "$EXCLUSION_FILE"
             echo "  Removed managed entries from $EXCLUSION_FILE"
         fi
     else

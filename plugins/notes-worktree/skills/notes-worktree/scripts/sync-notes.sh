@@ -5,7 +5,7 @@
 # - Updates exclusion file based on .notesrc configuration
 # - Supports dry-run, cleanup, verbose/quiet modes, and watch mode
 
-set -e
+set -euo pipefail
 
 # Source common utilities
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
@@ -150,6 +150,11 @@ do_action() {
 }
 
 # -------------------------------------------
+# Portable mtime helper (epoch seconds)
+# -------------------------------------------
+get_mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || date -r "$1" +%s 2>/dev/null || echo 0; }
+
+# -------------------------------------------
 # Interactive conflict resolution
 # -------------------------------------------
 resolve_conflict() {
@@ -158,9 +163,18 @@ resolve_conflict() {
     local rel_path="$3"
 
     if ! $INTERACTIVE; then
-        # Non-interactive: backup source and use notes version
-        log_warning "    Files differ! Backing up source to $rel_path.bak"
-        do_action "backup $src_file" mv "$src_file" "$src_file.bak"
+        # Non-interactive: newer side wins (notes wins on tie), no .bak
+        local src_mtime dest_mtime
+        src_mtime=$(get_mtime "$src_file")
+        dest_mtime=$(get_mtime "$dest_file")
+        if [ "$src_mtime" -gt "$dest_mtime" ]; then
+            log_warning "    Files differ! Main is newer; promoting main -> notes: $rel_path"
+            do_action "copy main to notes" cp "$src_file" "$dest_file"
+            do_action "remove main file" rm -f "$src_file"
+        else
+            log_warning "    Files differ! Notes is newer or equal; keeping notes: $rel_path"
+            do_action "remove main file" rm -f "$src_file"
+        fi
         return 0
     fi
 
@@ -236,7 +250,7 @@ cleanup_dangling_symlinks() {
                 log_warning "  Removing dangling symlink: $rel_path"
                 rm -f "$symlink"
             fi
-            ((count++))
+            ((count++)) || true
         fi
     done < <(find "$PROJECT_ROOT" \
         -name "*.md" \
@@ -332,8 +346,8 @@ if $CLEANUP; then
     cleanup_stale_exclusions
 fi
 
-# Create temp file for tracking paths
-TEMP_PATHS="$PROJECT_ROOT/.sync-notes-paths.tmp"
+# Create temp file for tracking paths (unique to avoid races under --watch)
+TEMP_PATHS="$(mktemp "${TMPDIR:-/tmp}/sync-notes-paths.XXXXXX")"
 trap 'rm -f "$TEMP_PATHS"' EXIT
 $DRY_RUN || rm -f "$TEMP_PATHS"
 
@@ -374,6 +388,7 @@ FORWARD_COUNT=0
 find "$PROJECT_ROOT" \
     -name "*.md" \
     -not -path "$PROJECT_ROOT/README.md" \
+    -not -path "$PROJECT_ROOT/CLAUDE.md" \
     -not -path "$PROJECT_ROOT/node_modules/*" \
     -not -path "$PROJECT_ROOT/.git/*" \
     -not -path "$PROJECT_ROOT/$WORKTREE_DIR/*" \
@@ -427,7 +442,7 @@ find "$PROJECT_ROOT" \
     # Create relative symlink
     if ! $DRY_RUN; then
         src_dir="$(dirname "$src_file")"
-        rel_to_notes="$(python3 -c "import os.path; print(os.path.relpath('$dest_file', '$src_dir'))")"
+        rel_to_notes="$(python3 -c 'import os.path,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$dest_file" "$src_dir")"
         ln -sf "$rel_to_notes" "$src_file"
         log_normal "    Symlinked: $rel_to_notes"
 
@@ -442,7 +457,7 @@ find "$PROJECT_ROOT" \
     else
         log_warning "[DRY-RUN] Would create symlink: $rel_path"
     fi
-done
+done || true  # tolerate non-zero find exit under pipefail
 
 log_normal ""
 
@@ -475,6 +490,12 @@ find "$NOTES_ROOT" \
         continue
     fi
 
+    # CLAUDE.md is a kept, tracked file in main - never symlink it
+    if [[ "$rel_path" == "CLAUDE.md" ]]; then
+        log_verbose "  SKIP (kept in main branch): $rel_path"
+        continue
+    fi
+
     # Skip if file matches exclude patterns
     if should_exclude_file "$notes_file"; then
         log_verbose "  SKIP (excluded): $rel_path"
@@ -494,7 +515,7 @@ find "$NOTES_ROOT" \
     if [ -L "$target_file" ]; then
         # Verify symlink points to correct location
         current_target="$(readlink "$target_file")"
-        expected_rel="$(python3 -c "import os.path; print(os.path.relpath('$notes_file', '$target_dir'))")"
+        expected_rel="$(python3 -c 'import os.path,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$notes_file" "$target_dir")"
         if [ "$current_target" = "$expected_rel" ]; then
             log_verbose "  OK: $rel_path"
             continue  # Symlink is correct, skip silently
@@ -517,7 +538,7 @@ find "$NOTES_ROOT" \
 
     # Create relative symlink
     if ! $DRY_RUN; then
-        rel_to_notes="$(python3 -c "import os.path; print(os.path.relpath('$notes_file', '$target_dir'))")"
+        rel_to_notes="$(python3 -c 'import os.path,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$notes_file" "$target_dir")"
         ln -sf "$rel_to_notes" "$target_file"
         log_normal "    -> $rel_to_notes"
 
@@ -532,7 +553,7 @@ find "$NOTES_ROOT" \
     else
         log_warning "[DRY-RUN] Would create symlink: $rel_path"
     fi
-done
+done || true  # tolerate non-zero find exit under pipefail
 
 log_normal ""
 
@@ -547,22 +568,17 @@ else
     # Create exclusion file if it doesn't exist
     touch "$EXCLUSION_FILE"
 
-    # Remove old managed entries
-    if grep -q "$EXCLUDE_MARKER" "$EXCLUSION_FILE" 2>/dev/null; then
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            sed -i '' "/$EXCLUDE_MARKER/,/$EXCLUDE_END/d" "$EXCLUSION_FILE"
-        else
-            sed -i "/$EXCLUDE_MARKER/,/$EXCLUDE_END/d" "$EXCLUSION_FILE"
-        fi
+    # Remove old managed entries (literal-line match, immune to regex metachars)
+    if grep -qF "$EXCLUDE_MARKER" "$EXCLUSION_FILE" 2>/dev/null; then
+        awk -v start="$EXCLUDE_MARKER" -v end="$EXCLUDE_END" '
+            $0 == start { skip=1 }
+            skip { if ($0 == end) skip=0; next }
+            { print }
+        ' "$EXCLUSION_FILE" > "$EXCLUSION_FILE.tmp" && mv "$EXCLUSION_FILE.tmp" "$EXCLUSION_FILE"
     fi
 
-    # Remove trailing blank lines before appending managed section
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS: remove trailing blank lines
-        sed -i '' -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$EXCLUSION_FILE" 2>/dev/null || true
-    else
-        sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$EXCLUSION_FILE" 2>/dev/null || true
-    fi
+    # Strip trailing blank lines before appending managed section (idempotent)
+    awk 'NF{p=NR} {a[NR]=$0} END{for(i=1;i<=p;i++) print a[i]}' "$EXCLUSION_FILE" > "$EXCLUSION_FILE.tmp" 2>/dev/null && mv "$EXCLUSION_FILE.tmp" "$EXCLUSION_FILE" || true
 
     # Add new managed entries
     {
@@ -578,6 +594,7 @@ else
             echo ""
             echo "# Exceptions: keep these in main branch"
             echo "!/README.md"
+            echo "!/CLAUDE.md"
 
             # Add exclusion patterns as exceptions (files to keep in main branch)
             if [ -n "$EXCLUDE_PATTERNS" ]; then

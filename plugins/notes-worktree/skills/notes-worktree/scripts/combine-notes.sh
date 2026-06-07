@@ -5,21 +5,24 @@
 # - Shifts content headings to fit under their section level
 # - Outputs to stdout for piping to file or pandoc
 
-set -e
+set -euo pipefail
 
 # -------------------------------------------
 # Resolve paths
 # -------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Source common utilities (resolve symlinks)
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SOURCE" ]; do
+    SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+    SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+    [[ $SCRIPT_SOURCE != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+source "$SCRIPT_DIR/_common.sh"
 
-# Handle case where script is in notes/scripts/
-if [[ "$SCRIPT_DIR" == */notes/scripts ]] || [[ "$SCRIPT_DIR" == */*/scripts ]]; then
-    NOTES_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    PROJECT_ROOT="$(cd "$NOTES_ROOT/.." && pwd)"
-else
-    PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-    NOTES_ROOT="$PROJECT_ROOT/notes"
-fi
+# Resolve PROJECT_ROOT and NOTES_ROOT from config (honors custom worktree dir)
+init_project_root
+load_notes_config
 
 # Get project name from directory
 PROJECT_NAME="$(basename "$PROJECT_ROOT")"
@@ -89,7 +92,12 @@ process_file() {
 # e.g., "client/src/modules/Auth" -> "Client > Src > Modules > Auth"
 path_to_breadcrumb() {
     local path="$1"
-    echo "$path" | sed 's/\// > /g' | sed 's/\b\(.\)/\u\1/g'
+    echo "$path" | sed 's/\// > /g' | awk '{
+        for (i=1; i<=NF; i++) {
+            if ($i != ">") $i = toupper(substr($i,1,1)) substr($i,2)
+        }
+        print
+    }'
 }
 
 # Count files
@@ -99,7 +107,7 @@ count_files() {
 
 # Count lines
 count_lines() {
-    find "$NOTES_ROOT" -name "*.md" -not -name "*.bak" -not -path "*/.git/*" -exec cat {} \; 2>/dev/null | wc -l | tr -d ' '
+    find "$NOTES_ROOT" -name "*.md" -not -name "*.bak" -not -path "*/.git/*" -exec cat {} \; 2>/dev/null | wc -l | tr -d ' ' || echo 0
 }
 
 # -------------------------------------------

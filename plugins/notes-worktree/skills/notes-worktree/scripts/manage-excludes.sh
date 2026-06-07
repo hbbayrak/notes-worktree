@@ -93,7 +93,12 @@ CONFIG_FILE="$NOTES_ROOT/.notesrc"
 get_current_patterns() {
     if [[ -f "$CONFIG_FILE" ]]; then
         local raw_patterns
-        raw_patterns=$(grep -o '"exclude_patterns"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4 || echo "")
+        if command -v jq >/dev/null 2>&1; then
+            # jq fast-path: returns "" when key is absent/null
+            raw_patterns=$(jq -r '.exclude_patterns // ""' "$CONFIG_FILE" 2>/dev/null || echo "")
+        else
+            raw_patterns=$(grep -o '"exclude_patterns"[[:space:]]*:[[:space:]]*"[^"]*"' "$CONFIG_FILE" | cut -d'"' -f4 || echo "")
+        fi
         echo "$raw_patterns"
     else
         echo ""
@@ -104,7 +109,7 @@ get_current_patterns() {
 patterns_to_array() {
     local input="$1"
     # Split by comma, trim whitespace, remove empty, sort unique
-    echo "$input" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | sort -u
+    echo "$input" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$' | sort -u || true
 }
 
 # Convert array (newline-separated) back to comma-separated
@@ -122,32 +127,70 @@ update_config() {
         exit 1
     fi
 
-    # Read current config
-    local config_content
-    config_content=$(cat "$CONFIG_FILE")
-
-    # Use a temporary file for the replacement
+    # Use a temporary file for the rewrite
     local temp_file
     temp_file=$(mktemp)
 
-    # Replace exclude_patterns value (handle both empty and non-empty cases)
-    if echo "$config_content" | grep -q '"exclude_patterns"'; then
-        # Pattern exists, replace it
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            sed -E 's/"exclude_patterns"[[:space:]]*:[[:space:]]*"[^"]*"/"exclude_patterns": "'"$new_patterns"'"/' "$CONFIG_FILE" > "$temp_file"
+    if command -v jq >/dev/null 2>&1; then
+        # jq fast-path: sets the key whether it exists or not, and handles
+        # all JSON escaping of $new_patterns safely.
+        if jq --arg p "$new_patterns" '.exclude_patterns = $p' "$CONFIG_FILE" > "$temp_file"; then
+            mv "$temp_file" "$CONFIG_FILE"
         else
-            sed -E 's/"exclude_patterns"[[:space:]]*:[[:space:]]*"[^"]*"/"exclude_patterns": "'"$new_patterns"'"/' "$CONFIG_FILE" > "$temp_file"
+            rm -f "$temp_file" 2>/dev/null || true
+            print_error "Failed to update $CONFIG_FILE"
+            exit 1
         fi
+        return
+    fi
+
+    # ---- Fallback (no jq): escape sed-special chars and avoid \n in sed ----
+    # Escape backslash, ampersand, and the '/' delimiter for the sed RHS.
+    local sed_value
+    sed_value=$(printf '%s' "$new_patterns" | sed -e 's/[\\&/]/\\&/g')
+
+    if grep -q '"exclude_patterns"' "$CONFIG_FILE"; then
+        # Key exists: replace its value in place.
+        sed -E 's/"exclude_patterns"[[:space:]]*:[[:space:]]*"[^"]*"/"exclude_patterns": "'"$sed_value"'"/' "$CONFIG_FILE" > "$temp_file"
         mv "$temp_file" "$CONFIG_FILE"
     else
-        # Pattern doesn't exist, add it before the closing brace
-        # This is a simple case - insert before last }
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            sed -i '' 's/}$/,\n  "exclude_patterns": "'"$new_patterns"'"\n}/' "$CONFIG_FILE"
-        else
-            sed -i 's/}$/,\n  "exclude_patterns": "'"$new_patterns"'"\n}/' "$CONFIG_FILE"
-        fi
-        rm -f "$temp_file" 2>/dev/null || true
+        # Key missing: insert the property before the final closing brace.
+        # BSD sed does not honor \n in the replacement string, so use awk to
+        # emit real newlines. $new_patterns is passed verbatim via -v.
+        # Strategy: buffer all lines; locate the last line that is exactly "}"
+        # (optionally indented/trailing-space). Append a comma to the preceding
+        # non-blank line, insert the new key, then emit the closing brace.
+        awk -v val="$new_patterns" '
+            { lines[NR] = $0 }
+            END {
+                close_idx = 0
+                for (i = NR; i >= 1; i--) {
+                    if (lines[i] ~ /^[[:space:]]*\}[[:space:]]*$/) { close_idx = i; break }
+                }
+                if (close_idx == 0) {
+                    # No standalone closing brace found; emit unchanged.
+                    for (i = 1; i <= NR; i++) print lines[i]
+                    exit 0
+                }
+                prev_idx = 0
+                for (i = close_idx - 1; i >= 1; i--) {
+                    if (lines[i] ~ /[^[:space:]]/) { prev_idx = i; break }
+                }
+                for (i = 1; i <= NR; i++) {
+                    if (i == prev_idx) {
+                        line = lines[i]
+                        sub(/[[:space:]]*$/, "", line)
+                        print line ","
+                    } else if (i == close_idx) {
+                        print "  \"exclude_patterns\": \"" val "\""
+                        print lines[i]
+                    } else {
+                        print lines[i]
+                    }
+                }
+            }
+        ' "$CONFIG_FILE" > "$temp_file"
+        mv "$temp_file" "$CONFIG_FILE"
     fi
 }
 
@@ -218,15 +261,15 @@ cmd_add() {
     new_input_array=$(patterns_to_array "$PATTERNS")
 
     # Combine and deduplicate
-    combined_array=$(printf "%s\n%s" "$current_array" "$new_input_array" | grep -v '^$' | sort -u)
+    combined_array=$(printf "%s\n%s" "$current_array" "$new_input_array" | grep -v '^$' | sort -u || true)
 
     # Convert back to comma-separated
     new_patterns=$(array_to_patterns "$combined_array")
 
     # Count how many were actually added (not duplicates)
     local current_count new_count
-    current_count=$(echo "$current_array" | grep -v '^$' | wc -l | tr -d ' ')
-    new_count=$(echo "$combined_array" | grep -v '^$' | wc -l | tr -d ' ')
+    current_count=$(echo "$current_array" | grep -v '^$' | wc -l | tr -d ' ' || true)
+    new_count=$(echo "$combined_array" | grep -v '^$' | wc -l | tr -d ' ' || true)
     added_count=$((new_count - current_count))
 
     if [[ $added_count -eq 0 ]]; then
@@ -279,16 +322,14 @@ cmd_remove() {
     current_array=$(patterns_to_array "$current")
     remove_array=$(patterns_to_array "$PATTERNS")
 
-    # Remove patterns (filter out those in remove_array)
+    # Remove patterns: keep every current pattern that is NOT an exact
+    # full-line match in the remove set (grep -qxF => exact, fixed-string).
     local remaining_array
-    remaining_array=$(echo "$current_array" | while read -r pattern; do
-        local found=false
-        echo "$remove_array" | while read -r remove_pattern; do
-            if [[ "$pattern" == "$remove_pattern" ]]; then
-                echo "FOUND"
-                break
-            fi
-        done | grep -q "FOUND" || echo "$pattern"
+    remaining_array=$(echo "$current_array" | while IFS= read -r pattern; do
+        [ -z "$pattern" ] && continue
+        if ! printf '%s\n' "$remove_array" | grep -qxF -- "$pattern"; then
+            echo "$pattern"
+        fi
     done)
 
     local new_patterns
@@ -296,8 +337,8 @@ cmd_remove() {
 
     # Count removed
     local current_count new_count removed_count
-    current_count=$(echo "$current_array" | grep -v '^$' | wc -l | tr -d ' ')
-    new_count=$(echo "$remaining_array" | grep -v '^$' | wc -l | tr -d ' ')
+    current_count=$(echo "$current_array" | grep -v '^$' | wc -l | tr -d ' ' || true)
+    new_count=$(echo "$remaining_array" | grep -v '^$' | wc -l | tr -d ' ' || true)
     removed_count=$((current_count - new_count))
 
     if [[ $removed_count -eq 0 ]]; then
