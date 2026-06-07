@@ -14,15 +14,28 @@ This plugin implements a pattern where markdown documentation files live in a se
 
 ## Installation
 
-```bash
-claude plugins add ~/Code/notes-worktree
+Add this repository as a plugin marketplace, then install the plugin — both from inside Claude Code:
+
+```text
+/plugin marketplace add hbbayrak/notes-worktree
+/plugin install notes-worktree@notes-worktree-marketplace
 ```
 
-Or clone and add:
-```bash
-git clone <repo-url> ~/Code/notes-worktree
-claude plugins add ~/Code/notes-worktree
+`/plugin marketplace add` also accepts a full git URL or a local path, e.g.
+`/plugin marketplace add https://github.com/hbbayrak/notes-worktree`.
+
+## Updating
+
+Plugins are **pull-based** — you receive a new version when you refresh the marketplace, not automatically. (Auto-update is off by default for third-party marketplaces.) When a new version is released:
+
+```text
+/plugin marketplace update notes-worktree-marketplace   # pull the latest version
+/reload-plugins                                          # activate it in this session
 ```
+
+To enable automatic updates for this marketplace, toggle it via `/plugin` → **Marketplaces**.
+
+> Each version is cached separately under `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`. If you set up a notes worktree before updating, re-run `init-notes-worktree.sh` afterward so the `notes/scripts` symlink re-points at the new plugin version.
 
 ## Usage
 
@@ -36,17 +49,23 @@ Simply ask Claude to set up notes worktree:
 
 ### Manual Setup
 
-Run the init script in any git project:
+Run the init script directly from a clone of this repo (the same scripts are bundled inside the installed plugin):
 
 ```bash
-./path/to/notes-worktree/skills/notes-worktree/scripts/init-notes-worktree.sh
+./plugins/notes-worktree/skills/notes-worktree/scripts/init-notes-worktree.sh \
+  --branch notes \
+  --dir ./notes \
+  --exclusion gitignore \
+  [--move-files] [--vscode] [--exclude "SKILL.md,CHANGELOG.md"]
 ```
 
-The script will interactively prompt for:
-1. Branch name (default: `notes`)
-2. Worktree directory (default: `./notes`)
-3. Exclusion method: local (`.git/info/exclude`) or shared (`.gitignore`)
-4. Whether to move existing `.md` files
+For a new branch, `--branch`, `--dir`, and `--exclusion` are required:
+- `--exclusion gitignore` — team-shared exclusions via `.gitignore`
+- `--exclusion exclude` — local-only exclusions via `.git/info/exclude`
+- `--move-files` — move existing `.md` files into the notes branch and symlink them
+- `--vscode` — hide the notes directory in VSCode
+
+If the branch already exists (locally or on a remote), its configuration is read from `.notesrc` and you can run with just `--branch <name>`.
 
 ### After Setup
 
