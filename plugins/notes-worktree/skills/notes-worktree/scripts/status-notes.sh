@@ -6,7 +6,7 @@
 # - Check for stale exclusion entries
 # - Show notes branch git status
 
-set -e
+set -euo pipefail
 
 # Source common utilities (resolve symlinks)
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
@@ -136,7 +136,9 @@ if [ -f "$EXCLUSION_FILE" ]; then
             fi
 
             # Skip pattern entries for gitignore method
-            if [[ "$line" == "**/README.md" ]] || [[ "$line" == "CLAUDE.md" ]] || [[ "$line" == "!/README.md" ]]; then
+            # (S-1): sync/init now write `*.md` and negation lines (`!/README.md`,
+            # `!/CLAUDE.md`, plus user `!pattern` exceptions). `!`* covers all negations.
+            if [[ "$line" == "*.md" ]] || [[ "$line" == "!"* ]]; then
                 continue
             fi
 
@@ -154,17 +156,17 @@ NOTES_UNCOMMITTED=0
 NOTES_UNPUSHED=0
 if [ -d "$NOTES_ROOT" ]; then
     cd "$NOTES_ROOT"
-    NOTES_UNCOMMITTED=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+    NOTES_UNCOMMITTED=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ' || echo 0)
 
     # Check for unpushed commits
-    CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
+    CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "")
     if [ -n "$CURRENT_BRANCH" ]; then
         UPSTREAM=$(git rev-parse --abbrev-ref "@{upstream}" 2>/dev/null || echo "")
         if [ -n "$UPSTREAM" ]; then
-            NOTES_UNPUSHED=$(git rev-list "$UPSTREAM..HEAD" 2>/dev/null | wc -l | tr -d ' ')
+            NOTES_UNPUSHED=$(git rev-list "$UPSTREAM..HEAD" 2>/dev/null | wc -l | tr -d ' ' || echo 0)
         else
             # No upstream, count all commits as "unpushed"
-            NOTES_UNPUSHED=$(git rev-list HEAD 2>/dev/null | wc -l | tr -d ' ')
+            NOTES_UNPUSHED=$(git rev-list HEAD 2>/dev/null | wc -l | tr -d ' ' || echo 0)
         fi
     fi
     cd "$PROJECT_ROOT"
@@ -259,7 +261,7 @@ if [ -f "$EXCLUSION_FILE" ]; then
             continue
         fi
         if $in_managed_section && [[ ! "$line" =~ ^# ]] && [[ -n "$line" ]]; then
-            ((TOTAL_EXCLUSIONS++))
+            ((TOTAL_EXCLUSIONS++)) || true
         fi
     done < "$EXCLUSION_FILE"
 fi

@@ -2,7 +2,7 @@
 # Push notes branch to remote
 # Usage: notes-push.sh [remote]
 
-set -e
+set -euo pipefail
 
 # Source common utilities (resolve symlinks)
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
@@ -19,7 +19,7 @@ source "$SCRIPT_DIR/_common.sh"
 # -------------------------------------------
 REMOTE="${1:-origin}"
 
-if [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
     echo "Usage: notes-push.sh [REMOTE]"
     echo ""
     echo "Push notes branch to remote repository."
@@ -64,7 +64,7 @@ if [ -z "$UPSTREAM" ]; then
     print_info "Setting upstream to $REMOTE/$BRANCH"
     git push -u "$REMOTE" "$BRANCH"
 else
-    git push
+    git push "$REMOTE" "$BRANCH"
 fi
 
 print_success "Push complete!"

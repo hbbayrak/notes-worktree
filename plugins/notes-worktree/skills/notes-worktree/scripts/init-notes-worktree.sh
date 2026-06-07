@@ -5,7 +5,7 @@
 # - Configures exclusions (local or shared)
 # - Optionally syncs existing .md files
 
-set -e
+set -euo pipefail
 
 # Source common utilities (resolve symlinks)
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
@@ -34,7 +34,7 @@ branch_exists_local() {
 # Check if branch exists on remote
 branch_exists_remote() {
     local branch="$1"
-    git ls-remote --heads origin "$branch" 2>/dev/null | grep -q "$branch"
+    git ls-remote --heads origin "$branch" 2>/dev/null | grep -q "refs/heads/$branch$"
 }
 
 # Fetch remote branch to local
@@ -52,10 +52,16 @@ read_config_from_branch() {
         return 1
     fi
 
-    # Parse JSON config (basic parsing with grep/sed)
-    WORKTREE_DIR=$(echo "$config_content" | grep '"worktree"' | sed 's/.*"worktree"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | sed 's|^\./||')
-    EXCLUSION_METHOD=$(echo "$config_content" | grep '"exclusion_method"' | sed 's/.*"exclusion_method"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
-    EXCLUDE_PATTERNS=$(echo "$config_content" | grep '"exclude_patterns"' | sed 's/.*"exclude_patterns"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+    # Parse JSON config: prefer jq if available, otherwise fall back to grep/sed
+    if command -v jq >/dev/null 2>&1; then
+        WORKTREE_DIR=$(printf '%s' "$config_content" | jq -r '.worktree // ""' 2>/dev/null | sed 's|^\./||')
+        EXCLUSION_METHOD=$(printf '%s' "$config_content" | jq -r '.exclusion_method // ""' 2>/dev/null)
+        EXCLUDE_PATTERNS=$(printf '%s' "$config_content" | jq -r '.exclude_patterns // ""' 2>/dev/null)
+    else
+        WORKTREE_DIR=$(echo "$config_content" | grep '"worktree"' | sed 's/.*"worktree"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' | sed 's|^\./||' || true)
+        EXCLUSION_METHOD=$(echo "$config_content" | grep '"exclusion_method"' | sed 's/.*"exclusion_method"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' || true)
+        EXCLUDE_PATTERNS=$(echo "$config_content" | grep '"exclude_patterns"' | sed 's/.*"exclude_patterns"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/' || true)
+    fi
 
     # Validate we got the required values
     if [[ -z "$WORKTREE_DIR" || -z "$EXCLUSION_METHOD" ]]; then
@@ -115,8 +121,8 @@ done
 [[ -z "$BRANCH_NAME" ]] && { print_error "--branch required"; show_usage; exit 1; }
 
 # Validate branch name format
-if [[ ! "$BRANCH_NAME" =~ ^[a-zA-Z0-9_-]+$ ]]; then
-    print_error "Invalid branch name. Use only letters, numbers, hyphens, and underscores."
+if [[ ! "$BRANCH_NAME" =~ ^[a-zA-Z0-9_/.-]+$ ]]; then
+    print_error "Invalid branch name. Use only letters, numbers, hyphens, underscores, slashes, and dots."
     exit 1
 fi
 
@@ -242,8 +248,16 @@ echo ""
 if ! $USE_EXISTING_BRANCH; then
     print_info "Creating orphan branch '$BRANCH_NAME'..."
 
-    # Save current branch
+    # Save current ref so we can return here afterwards.
+    # On a detached HEAD, --show-current is empty, so fall back to the
+    # abbreviated ref name (or the raw commit SHA) to make checkout-back work.
     CURRENT_BRANCH=$(git branch --show-current)
+    if [[ -z "$CURRENT_BRANCH" ]]; then
+        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+        if [[ -z "$CURRENT_BRANCH" || "$CURRENT_BRANCH" == "HEAD" ]]; then
+            CURRENT_BRANCH=$(git rev-parse HEAD)
+        fi
+    fi
 
     # Create orphan branch
     git checkout --orphan "$BRANCH_NAME"
@@ -255,8 +269,19 @@ if ! $USE_EXISTING_BRANCH; then
 This branch contains project documentation managed via git worktree.
 DOCEOF
 
-    # Create config file
-    cat > .notesrc << CONFIGEOF
+    # Create config file. Build with jq when available so that patterns
+    # containing quotes or backslashes can't corrupt the JSON; otherwise
+    # fall back to a heredoc.
+    if command -v jq >/dev/null 2>&1; then
+        jq -n \
+            --arg branch "$BRANCH_NAME" \
+            --arg worktree "./$WORKTREE_DIR" \
+            --arg method "$EXCLUSION_METHOD" \
+            --arg patterns "$EXCLUDE_PATTERNS" \
+            '{branch:$branch, worktree:$worktree, exclusion_method:$method, exclude_root_readme:true, exclude_patterns:$patterns}' \
+            > .notesrc
+    else
+        cat > .notesrc << CONFIGEOF
 {
   "branch": "$BRANCH_NAME",
   "worktree": "./$WORKTREE_DIR",
@@ -265,6 +290,7 @@ DOCEOF
   "exclude_patterns": "$EXCLUDE_PATTERNS"
 }
 CONFIGEOF
+    fi
 
     # Create .gitignore for notes branch (scripts symlink is excluded)
     {
@@ -347,13 +373,15 @@ print_info "Configuring exclusions in $EXCLUSION_FILE..."
 EXCLUDE_MARKER="# >>> sync-notes managed entries >>>"
 EXCLUDE_END="# <<< sync-notes managed entries <<<"
 
-# Remove old managed entries if they exist
-if grep -q "$EXCLUDE_MARKER" "$EXCLUSION_FILE" 2>/dev/null; then
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "/$EXCLUDE_MARKER/,/$EXCLUDE_END/d" "$EXCLUSION_FILE"
-    else
-        sed -i "/$EXCLUDE_MARKER/,/$EXCLUDE_END/d" "$EXCLUSION_FILE"
-    fi
+# Remove old managed entries if they exist. Use literal-line matching via awk
+# so the marker text (which contains regex metacharacters like >>> / <<<) is
+# never interpreted as a pattern.
+if grep -qF "$EXCLUDE_MARKER" "$EXCLUSION_FILE" 2>/dev/null; then
+    awk -v start="$EXCLUDE_MARKER" -v end="$EXCLUDE_END" '
+        $0 == start { skip=1 }
+        skip { if ($0 == end) skip=0; next }
+        { print }
+    ' "$EXCLUSION_FILE" > "$EXCLUSION_FILE.tmp" && mv "$EXCLUSION_FILE.tmp" "$EXCLUSION_FILE"
 fi
 
 # Add managed entries - only add blank line if file doesn't end with one
@@ -375,6 +403,7 @@ fi
         echo ""
         echo "# Exceptions: keep these in main branch"
         echo "!/README.md"
+        echo "!/CLAUDE.md"
 
         # Add exclusion patterns as exceptions (files to keep in main branch)
         if [ -n "$EXCLUDE_PATTERNS" ]; then

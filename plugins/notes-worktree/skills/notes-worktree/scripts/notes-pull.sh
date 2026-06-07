@@ -2,7 +2,7 @@
 # Pull notes branch from remote and sync symlinks
 # Usage: notes-pull.sh [OPTIONS] [REMOTE]
 
-set -e
+set -euo pipefail
 
 # Source common utilities (resolve symlinks)
 SCRIPT_SOURCE="${BASH_SOURCE[0]}"
@@ -125,7 +125,7 @@ if $SYNC_AFTER; then
     cd "$PROJECT_ROOT"
     print_info "Running sync to update symlinks..."
     echo ""
-    "$PROJECT_ROOT/scripts/sync-notes.sh" --cleanup --quiet
+    "$SCRIPT_DIR/sync-notes.sh" --cleanup --quiet
     print_success "Symlinks updated!"
     echo ""
 fi
