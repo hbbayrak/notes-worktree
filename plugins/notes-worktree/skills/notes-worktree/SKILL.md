@@ -167,8 +167,9 @@ client/README.md
 /scripts
 *.md
 !/README.md
-!/CLAUDE.md
 ```
+
+Only the root `README.md` is kept in the main branch; every other markdown file (including `CLAUDE.md`) lives in the notes branch and is reached via a symlink.
 
 ## Common Workflows
 

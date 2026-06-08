@@ -410,7 +410,6 @@ fi
         echo ""
         echo "# Exceptions: keep these in main branch"
         echo "!/README.md"
-        echo "!/CLAUDE.md"
 
         # Add exclusion patterns as exceptions (files to keep in main branch)
         if [ -n "$EXCLUDE_PATTERNS" ]; then
