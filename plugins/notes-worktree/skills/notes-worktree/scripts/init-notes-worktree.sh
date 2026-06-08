@@ -555,6 +555,25 @@ if $MOVE_FILES; then
 fi
 
 # -------------------------------------------
+# Materialize symlinks for an existing branch (clone / onboarding path)
+# -------------------------------------------
+# For an existing branch the root-level symlinks (e.g. CLAUDE.md -> notes/CLAUDE.md)
+# are not committed in either branch, so a freshly-mounted worktree has NO symlinks
+# until a reverse sync creates them -- project instructions wouldn't auto-load and
+# doc links would be broken. We run a symlinks-only reverse sync (NOT the full
+# forward sweep, which would move a teammate's own stray code-tree .md files into
+# the notes branch) so onboarding completes in a single step.
+if $USE_EXISTING_BRANCH; then
+    print_info "Creating documentation symlinks (reverse sync)..."
+    if "$SCRIPT_DIR/sync-notes.sh" --reverse-only --quiet; then
+        print_success "Documentation symlinks created."
+    else
+        print_warning "Symlink creation had issues. Run './$WORKTREE_DIR/scripts/sync-notes.sh --reverse-only' manually to retry."
+    fi
+    echo ""
+fi
+
+# -------------------------------------------
 # VSCode integration
 # -------------------------------------------
 if $VSCODE_CONFIG; then
@@ -611,16 +630,28 @@ echo "=========================================="
 echo ""
 echo "Your notes worktree is ready at ./$WORKTREE_DIR"
 echo ""
-echo "Next steps:"
-echo "  1. Edit documentation in ./$WORKTREE_DIR/ or via symlinks"
-echo "  2. Run ./$WORKTREE_DIR/scripts/sync-notes.sh to sync new .md files"
-echo "  3. Commit documentation:"
-echo "     cd $WORKTREE_DIR && git add -A && git commit -m 'Update docs'"
-echo "  4. Push notes branch:"
-echo "     cd $WORKTREE_DIR && git push -u origin $BRANCH_NAME"
-echo ""
-if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
-    echo "  5. Commit .gitignore changes to main branch:"
-    echo "     git add .gitignore && git commit -m 'Add notes worktree exclusions'"
+if $USE_EXISTING_BRANCH; then
+    # Existing-branch / clone path: the symlinks were just materialized, so the
+    # project is already usable. No initial sweep or first commit is required.
+    echo "Documentation symlinks are in place -- the project is ready to use."
+    echo ""
+    echo "Next steps:"
+    echo "  - Edit documentation in ./$WORKTREE_DIR/ or via the symlinks"
+    echo "  - After adding new .md files:  ./$WORKTREE_DIR/scripts/sync-notes.sh"
+    echo "  - Commit & push docs:"
+    echo "      cd $WORKTREE_DIR && git add -A && git commit -m 'Update docs' && git push"
+else
+    echo "Next steps:"
+    echo "  1. Edit documentation in ./$WORKTREE_DIR/ or via symlinks"
+    echo "  2. Run ./$WORKTREE_DIR/scripts/sync-notes.sh to sync new .md files"
+    echo "  3. Commit documentation:"
+    echo "     cd $WORKTREE_DIR && git add -A && git commit -m 'Update docs'"
+    echo "  4. Push notes branch:"
+    echo "     cd $WORKTREE_DIR && git push -u origin $BRANCH_NAME"
+    if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
+        echo ""
+        echo "  5. Commit .gitignore changes to main branch:"
+        echo "     git add .gitignore && git commit -m 'Add notes worktree exclusions'"
+    fi
 fi
 echo ""

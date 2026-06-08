@@ -87,7 +87,7 @@ For a new branch, `--branch`, `--dir`, and `--exclusion` are required:
   [the exclude pattern syntax reference](plugins/notes-worktree/skills/notes-worktree/references/setup-guide.md#exclude-pattern-syntax)
   for the full table and the `*`-crosses-`/` caveat.
 
-If the branch already exists (locally or on a remote), its configuration is read from `.notesrc` and you can run with just `--branch <name>`.
+If the branch already exists (locally or on a remote), its configuration is read from `.notesrc` and you can run with just `--branch <name>`. In that case `init` also **materializes the documentation symlinks** (via a symlinks-only reverse sync), so a fresh clone is usable in one step without a separate sync.
 
 ### After Setup
 
@@ -131,7 +131,7 @@ project/
 | Script | Purpose |
 |--------|---------|
 | `init-notes-worktree.sh` | Interactive setup for new projects |
-| `sync-notes.sh` | Bidirectional sync with --dry-run, --cleanup, --watch |
+| `sync-notes.sh` | Bidirectional sync with --dry-run, --cleanup, --watch, --reverse-only |
 | `status-notes.sh` | Health check and sync status report |
 | `cleanup-notes.sh` | Fix dangling symlinks and stale exclusions |
 | `teardown-notes.sh` | Clean uninstall of the setup |

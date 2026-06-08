@@ -26,6 +26,7 @@ VERBOSE=false
 QUIET=false
 WATCH=false
 INTERACTIVE=true
+REVERSE_ONLY=false
 
 show_help() {
     echo "Usage: sync-notes.sh [OPTIONS]"
@@ -38,6 +39,10 @@ show_help() {
     echo "  -v, --verbose    Show detailed output"
     echo "  -q, --quiet      Show only errors"
     echo "  --watch          Watch for file changes and auto-sync"
+    echo "  --reverse-only   Only create symlinks from the notes branch (skip the"
+    echo "                   main->notes sweep). Use when onboarding to an existing"
+    echo "                   notes branch so your own stray code-tree .md files are"
+    echo "                   never moved into the notes branch."
     echo "  --no-interactive Skip interactive conflict prompts"
     echo "  -h, --help       Show this help message"
     echo ""
@@ -45,6 +50,7 @@ show_help() {
     echo "  ./sync-notes.sh                    # Normal sync"
     echo "  ./sync-notes.sh --dry-run          # Preview changes"
     echo "  ./sync-notes.sh --cleanup          # Fix dangling symlinks"
+    echo "  ./sync-notes.sh --reverse-only     # Only create symlinks (clone onboarding)"
     echo "  ./sync-notes.sh --watch            # Auto-sync on changes"
 }
 
@@ -68,6 +74,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --watch)
             WATCH=true
+            shift
+            ;;
+        --reverse-only)
+            REVERSE_ONLY=true
             shift
             ;;
         --no-interactive)
@@ -161,6 +171,28 @@ do_action() {
 # Portable mtime helper (epoch seconds)
 # -------------------------------------------
 get_mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || date -r "$1" +%s 2>/dev/null || echo 0; }
+
+# -------------------------------------------
+# Untrack a doc that has become a symlink (both exclusion methods)
+# -------------------------------------------
+# When a markdown file is moved into the notes branch and replaced by a symlink,
+# any copy still tracked in the *code* branch index must be removed. Otherwise git
+# reports a permanent typechange (regular file -> symlink) and a routine
+# `git add -A` leaks the doc->symlink conversion into a code PR -- exactly what
+# this plugin exists to prevent. This is required for BOTH exclusion methods; only
+# the exclusion *file* that gets written differs (.gitignore vs .git/info/exclude).
+# The root README.md is always kept in main, so it is never untracked. The
+# `git rm --cached` is guarded by `ls-files --error-unmatch` so it only fires on
+# paths actually present in the index.
+untrack_moved_doc() {
+    local rel_path="$1"
+    [ "$rel_path" = "README.md" ] && return 0
+    $DRY_RUN && return 0
+    if git -C "$PROJECT_ROOT" ls-files --error-unmatch -- "$rel_path" >/dev/null 2>&1; then
+        git -C "$PROJECT_ROOT" rm --cached --quiet -- "$rel_path" 2>/dev/null || true
+        log_verbose "    Untracked from code branch index: $rel_path"
+    fi
+}
 
 # -------------------------------------------
 # Interactive conflict resolution
@@ -370,6 +402,9 @@ should_exclude_file() {
 # -------------------------------------------
 # Forward Sync: Main → Notes
 # -------------------------------------------
+# Skipped entirely in --reverse-only mode (onboarding): we must not sweep a
+# teammate's own code-tree .md files into the notes branch.
+if ! $REVERSE_ONLY; then
 log_normal "Forward sync: Moving .md files to notes..."
 log_normal ""
 
@@ -435,20 +470,18 @@ find "$PROJECT_ROOT" \
         ln -sf "$rel_to_notes" "$src_file"
         log_normal "    Symlinked: $rel_to_notes"
 
-        # Auto-add docs to .gitignore (only the root README is kept in main)
-        if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
-            filename=$(basename "$rel_path")
-            if [[ "$filename" != "README.md" ]]; then
-                # Untrack if previously tracked
-                git -C "$PROJECT_ROOT" rm --cached "$rel_path" 2>/dev/null || true
-            fi
-        fi
+        # Untrack the doc from the code branch index (both exclusion methods)
+        untrack_moved_doc "$rel_path"
     else
         log_warning "[DRY-RUN] Would create symlink: $rel_path"
     fi
 done || true  # tolerate non-zero find exit under pipefail
 
 log_normal ""
+else
+    log_normal "Reverse-only mode: skipping main->notes sweep (no code-tree files moved)."
+    log_normal ""
+fi
 
 # -------------------------------------------
 # Reverse Sync: Notes → Main
@@ -510,10 +543,19 @@ find "$NOTES_ROOT" \
         log_verbose "  SKIP (regular file): $rel_path"
         continue
     else
-        # Skip if parent directory doesn't exist (respect branch structure)
+        # Parent directory missing. Normal sync respects the existing code tree
+        # and skips (it won't fabricate directories during routine syncs). But
+        # reverse-only/onboarding reconstructs the documentation symlink tree from
+        # the notes branch, so create the directory — it will hold only excluded
+        # symlinks and won't dirty git status. Without this, a fresh clone gets
+        # symlinks only for docs whose directory still exists in main (e.g. root
+        # files like CLAUDE.md) and nested docs stay unreachable.
         if [ ! -d "$target_dir" ]; then
-            log_verbose "  SKIP (directory doesn't exist): $rel_path"
-            continue
+            if ! $REVERSE_ONLY; then
+                log_verbose "  SKIP (directory doesn't exist): $rel_path"
+                continue
+            fi
+            do_action "create directory $target_dir" mkdir -p "$target_dir"
         fi
         log_normal "  Creating symlink: $rel_path"
         ((REVERSE_COUNT++)) || true
@@ -525,14 +567,8 @@ find "$NOTES_ROOT" \
         ln -sf "$rel_to_notes" "$target_file"
         log_normal "    -> $rel_to_notes"
 
-        # Auto-add docs to .gitignore (only the root README is kept in main)
-        if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
-            filename=$(basename "$rel_path")
-            if [[ "$filename" != "README.md" ]]; then
-                # Untrack if previously tracked
-                git -C "$PROJECT_ROOT" rm --cached "$rel_path" 2>/dev/null || true
-            fi
-        fi
+        # Untrack the doc from the code branch index (both exclusion methods)
+        untrack_moved_doc "$rel_path"
     else
         log_warning "[DRY-RUN] Would create symlink: $rel_path"
     fi
@@ -608,6 +644,10 @@ log_normal "Updating notes/.gitignore..."
 
 if $DRY_RUN; then
     log_warning "[DRY-RUN] Would update notes/.gitignore"
+elif $REVERSE_ONLY; then
+    # Onboarding: don't rewrite (and thus dirty) the notes worktree's tracked
+    # .gitignore -- it already arrived with the clone.
+    log_verbose "  Skipping notes/.gitignore update (reverse-only / onboarding)"
 else
     # Generate expected content
     EXPECTED_CONTENT="# Scripts symlink (points to plugin)
@@ -659,5 +699,25 @@ log_normal "  Notes location: $NOTES_ROOT"
 log_normal "  Exclusions: $EXCLUSION_FILE"
 log_normal ""
 log_normal "Next steps:"
-log_normal "  cd $WORKTREE_DIR && git add -A && git commit -m 'Update docs'"
+if $REVERSE_ONLY; then
+    log_normal "  Documentation symlinks are in place -- the notes worktree is ready to use."
+else
+    log_normal "  Commit the docs in the notes branch:"
+    log_normal "    cd $WORKTREE_DIR && git add -A && git commit -m 'Update docs'"
+fi
+
+# If docs that were previously committed on the code branch got untracked (so the
+# working-tree symlinks no longer collide with a tracked regular file), those
+# removals are now staged in the *code* index and must be committed there too --
+# otherwise the migration isn't shared and teammates won't reach the same state.
+if ! $DRY_RUN && ! git -C "$PROJECT_ROOT" diff --cached --quiet --diff-filter=D 2>/dev/null; then
+    log_normal ""
+    log_normal "  Docs were untracked from the code branch and are staged for removal."
+    log_normal "  Commit that on the code branch so teammates inherit the same setup:"
+    if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
+        log_normal "    git add .gitignore && git commit -m 'Move docs to notes branch'"
+    else
+        log_normal "    git commit -m 'Move docs to notes branch'"
+    fi
+fi
 log_normal ""
