@@ -288,13 +288,26 @@ if $FIX_STALE; then
 fi
 
 # -------------------------------------------
-# Fix stale scripts symlink (points at an old plugin version after upgrade)
+# Fix stale/dangling/missing scripts symlink (points at an old plugin version
+# after upgrade, or was removed). A real file/dir at the path is left untouched.
 # -------------------------------------------
 SCRIPTS_LINK_FIXED=0
 _sl="$NOTES_ROOT/scripts"
-if [ -d "$SCRIPT_DIR" ] && [ -L "$_sl" ] && [ "$(readlink "$_sl" 2>/dev/null || echo "")" != "$SCRIPT_DIR" ]; then
+_sl_needs_repair=false
+if [ -d "$SCRIPT_DIR" ]; then
+    if [ -L "$_sl" ]; then
+        # Symlink present: stale/dangling if it doesn't point at the live dir
+        [ "$(readlink "$_sl" 2>/dev/null || echo "")" != "$SCRIPT_DIR" ] && _sl_needs_repair=true
+    elif [ ! -e "$_sl" ]; then
+        # Missing entirely: recreate, mirroring the sync/status self-heal
+        _sl_needs_repair=true
+    fi
+fi
+if $_sl_needs_repair; then
     if $DRY_RUN; then
-        if ! $QUIET; then print_warning "[DRY-RUN] Would repair stale notes/scripts symlink"; echo ""; fi
+        # Count it like the other detected issues so the summary total is accurate
+        SCRIPTS_LINK_FIXED=1
+        if ! $QUIET; then print_warning "[DRY-RUN] Would repair notes/scripts symlink (stale or missing)"; echo ""; fi
     else
         ensure_scripts_symlink
         if ${SCRIPTS_SYMLINK_REPAIRED:-false}; then
