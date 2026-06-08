@@ -42,10 +42,17 @@ Options:
   -q, --quiet          Minimal output
   -h, --help           Show this help
 
+Patterns may be filenames, globs, or directory subtrees (kept in main):
+  SKILL.md            a file by name (anywhere)
+  *.generated.md      a basename glob
+  src/                a whole directory subtree (or "src/**")
+  docs/superpowers/   a nested subtree
+
 Examples:
   manage-excludes.sh list
   manage-excludes.sh add "SKILL.md,CHANGELOG.md"
   manage-excludes.sh add SKILL.md CHANGELOG.md
+  manage-excludes.sh add "src/,docs/superpowers/"
   manage-excludes.sh remove "*.generated.md"
   manage-excludes.sh add "TODO.md" --no-commit
 EOF
