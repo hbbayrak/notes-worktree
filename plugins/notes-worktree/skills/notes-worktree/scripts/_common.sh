@@ -167,3 +167,92 @@ ensure_scripts_symlink() {
 # Exclusion markers used in gitignore/exclude files
 EXCLUDE_MARKER="# >>> sync-notes managed entries >>>"
 EXCLUDE_END="# <<< sync-notes managed entries <<<"
+
+# -------------------------------------------
+# Exclude-pattern matching (path-aware)
+# -------------------------------------------
+# Trim leading/trailing whitespace from a single pattern.
+_trim_pattern() {
+    local p="$1"
+    p="${p#"${p%%[![:space:]]*}"}"   # leading
+    p="${p%"${p##*[![:space:]]}"}"   # trailing
+    printf '%s' "$p"
+}
+
+# Decide whether a path (relative to the project/notes root, e.g.
+# "docs/superpowers/guide.md") is excluded from sync by the configured
+# EXCLUDE_PATTERNS. Supported pattern forms:
+#   - basename glob, no slash:   SKILL.md, *.generated.md   (legacy behavior)
+#   - directory subtree:         docs/superpowers/  or  docs/superpowers/**
+#   - bare path with a slash:    docs/superpowers  (that path OR anything under it)
+#   - path glob:                 docs/*.md
+# Note: in path globs, '*' matches across '/' (bash glob semantics), so prefer
+# "dir/" or "dir/**" when you mean "this whole subtree".
+# Reads EXCLUDE_PATTERNS. Returns 0 (excluded) or 1 (not excluded).
+notes_path_excluded() {
+    local rel="$1"
+    [ -n "${EXCLUDE_PATTERNS:-}" ] || return 1
+
+    local base
+    base="$(basename "$rel")"
+
+    local raw pattern dir
+    local -a _patterns
+    IFS=',' read -ra _patterns <<< "$EXCLUDE_PATTERNS"
+    for raw in "${_patterns[@]}"; do
+        pattern="$(_trim_pattern "$raw")"
+        [ -n "$pattern" ] || continue
+
+        if [[ "$pattern" != */* ]]; then
+            # No slash: legacy basename glob.
+            # shellcheck disable=SC2053
+            [[ "$base" == $pattern ]] && return 0
+            continue
+        fi
+
+        if [[ "$pattern" == *'/**' ]]; then
+            dir="${pattern%'/**'}"
+            [[ "$rel" == "$dir" || "$rel" == "$dir"/* ]] && return 0
+            continue
+        fi
+
+        if [[ "$pattern" == */ ]]; then
+            dir="${pattern%/}"
+            [[ "$rel" == "$dir"/* ]] && return 0
+            continue
+        fi
+
+        if [[ "$pattern" == *[*?\[]* ]]; then
+            # Path containing glob metacharacters: match the full relative path.
+            # shellcheck disable=SC2053
+            [[ "$rel" == $pattern ]] && return 0
+            continue
+        fi
+
+        # Bare path with a slash and no glob: exact file OR directory subtree.
+        [[ "$rel" == "$pattern" || "$rel" == "$pattern"/* ]] && return 0
+    done
+    return 1
+}
+
+# Convert an exclude pattern into the .gitignore negation line(s) that re-include
+# the matching path(s) in the MAIN branch (which blanket-ignores *.md under the
+# gitignore method). Directory subtrees must use /** so nested markdown is kept.
+# Prints one or more "!..." lines on stdout.
+to_gitignore_negation() {
+    local pattern
+    pattern="$(_trim_pattern "$1")"
+    [ -n "$pattern" ] || return 0
+
+    if [[ "$pattern" == *'/**' ]]; then
+        printf '!%s\n' "$pattern"
+    elif [[ "$pattern" == */ ]]; then
+        printf '!%s**\n' "$pattern"                 # docs/x/ -> !docs/x/**
+    elif [[ "$pattern" == */* && "$pattern" != *[*?\[]* ]]; then
+        # Bare path with a slash, no glob: cover both file and subtree forms.
+        printf '!%s\n' "$pattern"
+        printf '!%s/**\n' "$pattern"
+    else
+        printf '!%s\n' "$pattern"                   # basename or glob: as-is
+    fi
+}

@@ -522,14 +522,56 @@ Required for NEW branches only (auto-detected from .notesrc for existing branche
   --exclusion METHOD   Exclusion method: 'gitignore' or 'exclude'
 
 Optional:
+  --dry-run            Preview which .md files setup would move into the notes
+                       branch (grouped by directory, flags code-adjacent trees),
+                       then exit without making any changes
   --move-files         Move existing .md files to notes and create symlinks
-  --exclude PATTERNS   Comma-separated file patterns to exclude from sync
-                       (e.g., "SKILL.md,CHANGELOG.md,*.generated.md")
+  --exclude PATTERNS   Comma-separated patterns to keep in main (exclude from
+                       sync). Filenames, globs, or directory subtrees:
+                       "SKILL.md,*.generated.md,src/,docs/superpowers/"
   --vscode             Configure VSCode to hide notes directory
   -h, --help           Show help
 ```
 
 If the branch already exists (locally or on remote), the script reads configuration from the branch's `.notesrc` file and skips questions. This makes it easy to set up the worktree on a new machine or after cloning.
+
+#### Preview the sweep before moving anything
+
+The initial sweep moves **every** markdown file (except the root `README.md`)
+into the notes branch. For repos with code-adjacent docs (e.g. `src/`,
+`packages/`), preview first so nothing moves by surprise:
+
+```bash
+./notes/scripts/init-notes-worktree.sh --dry-run
+./notes/scripts/init-notes-worktree.sh --dry-run --exclude "src/,packages/"
+```
+
+`--dry-run` makes no changes. It lists the files that would move, grouped by
+top-level directory, and flags directories that look code-adjacent. Re-run it
+with `--exclude` until the move/keep split is right, then run the real setup.
+
+#### Exclude pattern syntax
+
+`--exclude` patterns (and those managed via `manage-excludes.sh`) are matched
+against each file's path relative to the project root:
+
+| Pattern | Matches |
+|---------|---------|
+| `SKILL.md` | any file named `SKILL.md` (basename, legacy behavior) |
+| `*.generated.md` | basename glob |
+| `src/` or `src/**` | the entire `src/` subtree |
+| `docs/superpowers/` | a nested subtree |
+| `docs/*.md` | a path glob |
+
+> **Caveat:** in path globs, `*` matches across `/` (bash glob semantics, unlike
+> `.gitignore`). To keep a whole subtree, prefer `dir/` or `dir/**` rather than
+> `dir/*`. A pattern with **no slash** (e.g. `src`) matches by *basename*, not as
+> a directory — use `src/` to exclude the `src/` tree.
+>
+> Exclusions take effect for files **not yet swept**. A subtree already moved
+> into the notes branch is not pulled back automatically — set exclusions at
+> setup (or before the first sync of that path), or use
+> `teardown-notes.sh --keep-files` to recover already-moved files.
 
 ### sync-notes.sh
 
@@ -675,9 +717,10 @@ Examples:
 # View current patterns
 ./notes/scripts/manage-excludes.sh list
 
-# Add patterns
+# Add patterns (filenames, globs, or directory subtrees)
 ./notes/scripts/manage-excludes.sh add "SKILL.md,CHANGELOG.md"
 ./notes/scripts/manage-excludes.sh add TODO.md
+./notes/scripts/manage-excludes.sh add "src/,docs/superpowers/"
 
 # Remove patterns
 ./notes/scripts/manage-excludes.sh remove "*.generated.md"

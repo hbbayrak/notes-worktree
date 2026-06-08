@@ -59,9 +59,30 @@ Only ask these questions if the branch does NOT exist:
 3. **VSCode integration**: Configure VSCode to hide notes directory?
    - Yes or No
 
-4. **Exclude patterns**: Comma-separated list of file patterns to exclude from sync
-   - Example: `SKILL.md,CHANGELOG.md,*.generated.md`
-   - Default: empty (no exclusions)
+4. **Files or directories to keep in main**: Anything that should NOT move into
+   the notes branch. Patterns may be filenames, globs, **or directory subtrees**.
+   - Examples: `SKILL.md`, `*.generated.md`, `src/`, `docs/superpowers/`
+   - Default: empty — but do not accept the default blindly; confirm it in Step 2a.
+
+### Step 2a: Preview the Sweep Before Moving Anything (New Branches Only)
+
+**Always do this before a `--move-files` setup.** The sweep moves *every* markdown
+file (except the root `README.md`) into the notes branch, and that is easy to
+regret for code-adjacent docs. Preview first:
+
+```bash
+${CLAUDE_SKILL_DIR}/scripts/init-notes-worktree.sh --dry-run [--exclude "..."]
+```
+
+This makes no changes. It lists the `.md` files that *would* move, grouped by
+top-level directory, and flags directories that look code-adjacent with a
+`⚠ consider --exclude` hint.
+
+1. Show the preview to the user.
+2. Ask explicitly: **"Which directories or files should stay in main?"** —
+   pre-populating your suggestion with the directories the preview flagged.
+3. Re-run `--dry-run --exclude "..."` to confirm the move/keep split looks right.
+4. Only then run the real setup (Step 3) with the agreed `--exclude`.
 
 ### Step 3: Run Setup Script
 
@@ -72,16 +93,26 @@ The scripts are located in this skill's directory. Run the init script using the
 ${CLAUDE_SKILL_DIR}/scripts/init-notes-worktree.sh --branch notes
 ```
 
-**For new branches** (all params required):
+**For new branches** (all params required). Preview first with `--dry-run`
+(Step 2a), then run the real setup:
 ```bash
+# Preview only — no changes:
+${CLAUDE_SKILL_DIR}/scripts/init-notes-worktree.sh --dry-run [--exclude "src/"]
+
+# Real setup:
 ${CLAUDE_SKILL_DIR}/scripts/init-notes-worktree.sh \
   --branch notes \
   --dir ./notes \
   --exclusion <gitignore|exclude> \
-  [--exclude "pattern1,pattern2"] \
+  [--exclude "SKILL.md,src/,docs/superpowers/"] \
   [--move-files] \
   [--vscode]
 ```
+
+`--exclude` patterns may be filenames, globs, or **directory subtrees**. Write a
+subtree with a trailing `/` or `/**` (e.g. `src/`, `docs/superpowers/**`), or any
+pattern containing a `/`. A bare token with no slash (e.g. `SKILL.md`) matches by
+basename, as before.
 
 `${CLAUDE_SKILL_DIR}` expands to this skill's directory at runtime; the scripts live in its `scripts/` subdirectory.
 
@@ -113,14 +144,25 @@ Script output:
   --dir required for new branch
 
 Claude: The branch doesn't exist yet. Let me ask a few questions to configure it.
-[AskUserQuestion: Exclusion method, Move files, VSCode integration, Exclude patterns]
+[AskUserQuestion: Exclusion method, Move files, VSCode integration, Keep-in-main]
 
-User selects: gitignore, yes, yes, "SKILL.md"
+User selects: gitignore, yes, yes
+
+Claude previews the sweep before moving anything:
+${CLAUDE_SKILL_DIR}/scripts/init-notes-worktree.sh --dry-run
+
+Script output:
+  Would MOVE into the notes branch (8 file(s)):
+    docs/                3 file(s)
+    src/                 5 file(s)   ⚠ code-adjacent — consider --exclude "src/"
+
+Claude: src/ holds code-adjacent docs — shall I keep src/ in main?
+User: yes, keep src/
 
 Claude runs:
 ${CLAUDE_SKILL_DIR}/scripts/init-notes-worktree.sh \
   --branch notes --dir ./notes \
-  --exclusion gitignore --exclude "SKILL.md" --move-files --vscode
+  --exclusion gitignore --exclude "src/" --move-files --vscode
 ```
 
 For the full CLI reference and troubleshooting, see `references/setup-guide.md`.

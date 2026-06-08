@@ -360,29 +360,11 @@ trap 'rm -f "$TEMP_PATHS"' EXIT
 $DRY_RUN || rm -f "$TEMP_PATHS"
 
 # -------------------------------------------
-# Build exclude patterns for find command
+# Exclusion test (path-aware; see notes_path_excluded in _common.sh)
 # -------------------------------------------
-build_exclude_args() {
-    local file="$1"
-    local filename=$(basename "$file")
-
-    # Check against exclude patterns from config
-    if [ -n "$EXCLUDE_PATTERNS" ]; then
-        IFS=',' read -ra PATTERNS <<< "$EXCLUDE_PATTERNS"
-        for pattern in "${PATTERNS[@]}"; do
-            pattern=$(echo "$pattern" | xargs)  # trim whitespace
-            # Support both exact match and glob patterns
-            if [[ "$filename" == $pattern ]]; then
-                return 0  # Should be excluded
-            fi
-        done
-    fi
-    return 1  # Should not be excluded
-}
-
+# Takes a path relative to the project/notes root (e.g. "docs/superpowers/x.md").
 should_exclude_file() {
-    local file="$1"
-    build_exclude_args "$file"
+    notes_path_excluded "$1"
 }
 
 # -------------------------------------------
@@ -414,7 +396,7 @@ find "$PROJECT_ROOT" \
     fi
 
     # Skip if file matches exclude patterns
-    if should_exclude_file "$src_file"; then
+    if should_exclude_file "$rel_path"; then
         log_verbose "  SKIP (excluded): $rel_path"
         continue
     fi
@@ -498,7 +480,7 @@ find "$NOTES_ROOT" \
     fi
 
     # Skip if file matches exclude patterns
-    if should_exclude_file "$notes_file"; then
+    if should_exclude_file "$rel_path"; then
         log_verbose "  SKIP (excluded): $rel_path"
         continue
     fi
@@ -596,12 +578,13 @@ else
             echo "# Exceptions: keep these in main branch"
             echo "!/README.md"
 
-            # Add exclusion patterns as exceptions (files to keep in main branch)
+            # Add exclusion patterns as exceptions (kept in main branch).
+            # Directory subtrees are normalized to "!dir/**" so nested markdown
+            # is re-included under the blanket "*.md" ignore.
             if [ -n "$EXCLUDE_PATTERNS" ]; then
                 IFS=',' read -ra PATTERNS <<< "$EXCLUDE_PATTERNS"
                 for pattern in "${PATTERNS[@]}"; do
-                    pattern=$(echo "$pattern" | xargs)  # trim whitespace
-                    echo "!$pattern"
+                    to_gitignore_negation "$pattern"
                 done
             fi
         else

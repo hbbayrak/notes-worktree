@@ -80,6 +80,7 @@ EXCLUSION_METHOD=""
 MOVE_FILES=false
 VSCODE_CONFIG=false
 EXCLUDE_PATTERNS=""
+DRY_RUN=false
 
 show_usage() {
     cat << 'EOF'
@@ -93,15 +94,122 @@ Required for NEW branches only (auto-detected from .notesrc for existing branche
   --exclusion METHOD   Exclusion method: 'gitignore' or 'exclude'
 
 Optional:
+  --dry-run            Preview which .md files setup would move into the notes
+                       branch (grouped by directory, flags code-adjacent trees),
+                       then exit without making any changes
   --move-files         Move existing .md files to notes
-  --exclude PATTERNS   Comma-separated file patterns to exclude from sync
-                       (e.g., "SKILL.md,CHANGELOG.md,*.generated.md")
+  --exclude PATTERNS   Comma-separated patterns to keep in main (exclude from
+                       sync). Supports filenames, globs, and directory subtrees:
+                       "SKILL.md,*.generated.md,src/,docs/superpowers/"
   --vscode             Configure VSCode integration
   -h, --help           Show this help
 
 If the branch already exists (locally or on remote), configuration is read
 from the branch's .notesrc file and questions are skipped.
 EOF
+}
+
+# Preview the forward-sync sweep without making any changes. Lists the markdown
+# files that would be moved into the notes branch, grouped by top-level
+# directory, and flags directories that look code-adjacent (likely "keep in
+# main" candidates). Honors any patterns passed via --exclude.
+preview_dry_run() {
+    local preview_wt="${WORKTREE_DIR:-notes}"
+    preview_wt="${preview_wt#./}"
+
+    local tmp
+    tmp="$(mktemp)"
+
+    local f rel top status
+    while IFS= read -r f; do
+        [ -L "$f" ] && continue   # already a symlink; sync would skip it
+        rel="${f#"$PROJECT_ROOT"/}"
+        if [[ "$rel" == */* ]]; then top="${rel%%/*}"; else top="(root files)"; fi
+        if notes_path_excluded "$rel"; then status="keep"; else status="move"; fi
+        printf '%s\t%s\t%s\n' "$status" "$top" "$rel" >> "$tmp"
+    done < <(find "$PROJECT_ROOT" \
+        -name '*.md' \
+        -not -path "$PROJECT_ROOT/README.md" \
+        -not -path "$PROJECT_ROOT/.git/*" \
+        -not -path "$PROJECT_ROOT/node_modules/*" \
+        -not -path "*/node_modules/*" \
+        -not -path "$PROJECT_ROOT/$preview_wt/*" \
+        2>/dev/null | sort)
+
+    echo ""
+    echo "=========================================="
+    echo "  Notes Worktree — Setup Preview (dry run)"
+    echo "=========================================="
+    print_info "Project: $PROJECT_ROOT"
+    if [ -n "$EXCLUDE_PATTERNS" ]; then
+        print_info "Exclude: $EXCLUDE_PATTERNS"
+    fi
+    echo ""
+
+    if [ ! -s "$tmp" ]; then
+        echo "No markdown files would be moved (nothing to sweep)."
+        rm -f "$tmp"
+        return 0
+    fi
+
+    local move_total
+    move_total=$(awk -F'\t' '$1=="move"' "$tmp" | wc -l | tr -d ' ')
+
+    if [ "$move_total" -eq 0 ]; then
+        echo "Would move: nothing — all markdown is already excluded."
+    else
+        echo "Would MOVE into the notes branch ($move_total file(s)):"
+        echo ""
+        awk -F'\t' '$1=="move"{c[$2]++} END{for(k in c) printf "%s\t%d\n", k, c[k]}' "$tmp" \
+            | sort | while IFS=$'\t' read -r top count; do
+            if [ "$top" != "(root files)" ] && likely_code_dir "$top"; then
+                printf "  %-28s %3d file(s)   \xe2\x9a\xa0 code-adjacent — consider --exclude \"%s/\"\n" "$top/" "$count" "$top"
+            else
+                printf "  %-28s %3d file(s)\n" "$top/" "$count"
+            fi
+        done
+    fi
+
+    if awk -F'\t' '$1=="keep"' "$tmp" | grep -q .; then
+        echo ""
+        echo "Would KEEP in main (already excluded):"
+        echo ""
+        awk -F'\t' '$1=="keep"{c[$2]++} END{for(k in c) printf "%s\t%d\n", k, c[k]}' "$tmp" \
+            | sort | while IFS=$'\t' read -r top count; do
+            printf "  %-28s %3d file(s)\n" "$top/" "$count"
+        done
+    fi
+
+    echo ""
+    echo "Root README.md is always kept in main."
+    echo ""
+    echo "Re-run with --exclude \"dir/,other/\" to keep directories in main,"
+    echo "or proceed (without --dry-run) to set up and move the rest."
+    echo ""
+
+    rm -f "$tmp"
+    return 0
+}
+
+# Heuristic: does this top-level directory look like it holds code (so its
+# markdown is probably code-adjacent and better left in main)? Matches common
+# code directory names, or any tree that contains source files.
+likely_code_dir() {
+    local top="$1"
+    case "$top" in
+        src|lib|libs|pkg|packages|internal|vendor|app|apps|cmd|test|tests|spec|examples|example)
+            return 0 ;;
+    esac
+    if find "$PROJECT_ROOT/$top" -type f \( \
+            -name '*.js' -o -name '*.ts' -o -name '*.jsx' -o -name '*.tsx' \
+            -o -name '*.py' -o -name '*.go' -o -name '*.rs' -o -name '*.java' \
+            -o -name '*.rb' -o -name '*.php' -o -name '*.c' -o -name '*.h' \
+            -o -name '*.cpp' -o -name '*.cc' -o -name '*.cs' -o -name '*.swift' \
+            -o -name '*.kt' -o -name '*.scala' -o -name '*.sh' \
+            \) -print -quit 2>/dev/null | grep -q .; then
+        return 0
+    fi
+    return 1
 }
 
 while [[ $# -gt 0 ]]; do
@@ -111,11 +219,19 @@ while [[ $# -gt 0 ]]; do
         --exclusion) EXCLUSION_METHOD="$2"; shift 2 ;;
         --move-files) MOVE_FILES=true; shift ;;
         --exclude) EXCLUDE_PATTERNS="$2"; shift 2 ;;
+        --dry-run) DRY_RUN=true; shift ;;
         --vscode) VSCODE_CONFIG=true; shift ;;
         -h|--help) show_usage; exit 0 ;;
         *) print_error "Unknown option: $1"; show_usage; exit 1 ;;
     esac
 done
+
+# Preview mode: show what the sweep would move and exit without any changes.
+# Intentionally does not require --branch/--dir so it can run on a virgin repo.
+if $DRY_RUN; then
+    preview_dry_run
+    exit 0
+fi
 
 # Validate branch name is always required
 [[ -z "$BRANCH_NAME" ]] && { print_error "--branch required"; show_usage; exit 1; }
@@ -411,12 +527,13 @@ fi
         echo "# Exceptions: keep these in main branch"
         echo "!/README.md"
 
-        # Add exclusion patterns as exceptions (files to keep in main branch)
+        # Add exclusion patterns as exceptions (kept in main branch).
+        # Directory subtrees are normalized to "!dir/**" so nested markdown is
+        # re-included under the blanket "*.md" ignore.
         if [ -n "$EXCLUDE_PATTERNS" ]; then
             IFS=',' read -ra PATTERNS <<< "$EXCLUDE_PATTERNS"
             for pattern in "${PATTERNS[@]}"; do
-                pattern=$(echo "$pattern" | xargs)  # trim whitespace
-                echo "!$pattern"
+                to_gitignore_negation "$pattern"
             done
         fi
     fi
