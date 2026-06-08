@@ -396,7 +396,6 @@ FORWARD_COUNT=0
 find "$PROJECT_ROOT" \
     -name "*.md" \
     -not -path "$PROJECT_ROOT/README.md" \
-    -not -path "$PROJECT_ROOT/CLAUDE.md" \
     -not -path "$PROJECT_ROOT/node_modules/*" \
     -not -path "$PROJECT_ROOT/.git/*" \
     -not -path "$PROJECT_ROOT/$WORKTREE_DIR/*" \
@@ -454,10 +453,10 @@ find "$PROJECT_ROOT" \
         ln -sf "$rel_to_notes" "$src_file"
         log_normal "    Symlinked: $rel_to_notes"
 
-        # Auto-add non-README/CLAUDE files to .gitignore
+        # Auto-add docs to .gitignore (only the root README is kept in main)
         if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
             filename=$(basename "$rel_path")
-            if [[ "$filename" != "README.md" && "$filename" != "CLAUDE.md" ]]; then
+            if [[ "$filename" != "README.md" ]]; then
                 # Untrack if previously tracked
                 git -C "$PROJECT_ROOT" rm --cached "$rel_path" 2>/dev/null || true
             fi
@@ -495,12 +494,6 @@ find "$NOTES_ROOT" \
     # about the notes branch itself, not project documentation
     if [[ "$rel_path" == "README.md" ]]; then
         log_verbose "  SKIP (notes branch internal README): $rel_path"
-        continue
-    fi
-
-    # CLAUDE.md is a kept, tracked file in main - never symlink it
-    if [[ "$rel_path" == "CLAUDE.md" ]]; then
-        log_verbose "  SKIP (kept in main branch): $rel_path"
         continue
     fi
 
@@ -550,10 +543,10 @@ find "$NOTES_ROOT" \
         ln -sf "$rel_to_notes" "$target_file"
         log_normal "    -> $rel_to_notes"
 
-        # Auto-add non-README/CLAUDE files to .gitignore
+        # Auto-add docs to .gitignore (only the root README is kept in main)
         if [ "$EXCLUSION_METHOD" = "gitignore" ]; then
             filename=$(basename "$rel_path")
-            if [[ "$filename" != "README.md" && "$filename" != "CLAUDE.md" ]]; then
+            if [[ "$filename" != "README.md" ]]; then
                 # Untrack if previously tracked
                 git -C "$PROJECT_ROOT" rm --cached "$rel_path" 2>/dev/null || true
             fi
@@ -602,7 +595,6 @@ else
             echo ""
             echo "# Exceptions: keep these in main branch"
             echo "!/README.md"
-            echo "!/CLAUDE.md"
 
             # Add exclusion patterns as exceptions (files to keep in main branch)
             if [ -n "$EXCLUDE_PATTERNS" ]; then

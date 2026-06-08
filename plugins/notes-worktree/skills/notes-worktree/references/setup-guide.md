@@ -81,13 +81,14 @@ Add to `.gitignore`:
 # Notes worktree
 /notes/
 
-# Documentation symlinks
-**/README.md
-CLAUDE.md
+# Documentation symlinks (all markdown)
+*.md
 
 # Exception: keep root README in main branch
 !/README.md
 ```
+
+Only the root `README.md` stays in the main branch; every other markdown file (including `CLAUDE.md`) lives in the notes branch and is reached through a symlink.
 
 ### Step 4: Create Notes .gitignore
 
@@ -97,8 +98,7 @@ In `notes/.gitignore`:
 /scripts
 
 # Negate exclusions so files are tracked in notes branch
-!**/README.md
-!CLAUDE.md
+!*.md
 
 # Ignore system files
 .DS_Store
@@ -551,7 +551,7 @@ Options:
 Features:
 - **Forward sync**: Moves `.md` files from main project to notes, creates symlinks
 - **Reverse sync**: Creates symlinks for files in notes lacking them in main
-- **Auto-gitignore**: Non-README/CLAUDE files are automatically untracked when using gitignore exclusion
+- **Auto-gitignore**: Every markdown file except the root `README.md` is automatically untracked when using gitignore exclusion
 
 ### status-notes.sh
 

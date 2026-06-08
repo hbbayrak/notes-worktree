@@ -149,8 +149,8 @@ if [ -f "$EXCLUSION_FILE" ]; then
             fi
 
             # Skip pattern entries for gitignore method
-            # (S-1): sync/init now write `*.md` and negation lines (`!/README.md`,
-            # `!/CLAUDE.md`, plus user `!pattern` exceptions). `!`* covers all negations.
+            # sync/init write `*.md` plus negation lines (`!/README.md` and any
+            # user `!pattern` exceptions). `!`* covers all negations.
             if [[ "$line" == "*.md" ]] || [[ "$line" == "!"* ]]; then
                 continue
             fi
