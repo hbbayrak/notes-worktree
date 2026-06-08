@@ -561,12 +561,19 @@ against each file's path relative to the project root:
 | `*.generated.md` | basename glob |
 | `src/` or `src/**` | the entire `src/` subtree |
 | `docs/superpowers/` | a nested subtree |
+| `/src/Packages` or `/packages` | leading-slash, gitignore-style anchor to the project root — the whole subtree, even a single top-level segment like `/packages` |
 | `docs/*.md` | a path glob |
 
+> **Leading slash:** a pattern may start with `/` (e.g. `/src/Packages`, `/packages`)
+> to anchor it to the project root, exactly as you'd write it in `.gitignore`. The
+> leading `/` is stripped (paths are already root-relative) and a single anchored
+> segment like `/packages` is treated as a **directory**, so `/packages` keeps the
+> top-level `packages/` tree in main (but not a nested `foo/packages/`).
+>
 > **Caveat:** in path globs, `*` matches across `/` (bash glob semantics, unlike
 > `.gitignore`). To keep a whole subtree, prefer `dir/` or `dir/**` rather than
-> `dir/*`. A pattern with **no slash** (e.g. `src`) matches by *basename*, not as
-> a directory — use `src/` to exclude the `src/` tree.
+> `dir/*`. A pattern with **no slash and no leading anchor** (e.g. `src`) matches
+> by *basename*, not as a directory — use `src/` or `/src` to exclude the `src/` tree.
 >
 > Exclusions take effect for files **not yet swept**. A subtree already moved
 > into the notes branch is not pulled back automatically — set exclusions at

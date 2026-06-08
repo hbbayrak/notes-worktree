@@ -110,9 +110,11 @@ ${CLAUDE_SKILL_DIR}/scripts/init-notes-worktree.sh \
 ```
 
 `--exclude` patterns may be filenames, globs, or **directory subtrees**. Write a
-subtree with a trailing `/` or `/**` (e.g. `src/`, `docs/superpowers/**`), or any
-pattern containing a `/`. A bare token with no slash (e.g. `SKILL.md`) matches by
-basename, as before.
+subtree with a trailing `/` or `/**` (e.g. `src/`, `docs/superpowers/**`), any
+pattern containing a `/`, or a **leading-slash anchor** as you would in
+`.gitignore` (e.g. `/src/Packages`, `/packages` — anchored to the project root,
+single segments included). A bare token with no slash and no leading `/`
+(e.g. `SKILL.md`) matches by basename, as before.
 
 `${CLAUDE_SKILL_DIR}` expands to this skill's directory at runtime; the scripts live in its `scripts/` subdirectory.
 

@@ -185,6 +185,10 @@ _trim_pattern() {
 #   - basename glob, no slash:   SKILL.md, *.generated.md   (legacy behavior)
 #   - directory subtree:         docs/superpowers/  or  docs/superpowers/**
 #   - bare path with a slash:    docs/superpowers  (that path OR anything under it)
+#   - leading-slash anchor:      /src/Packages, /packages  (gitignore style; the
+#                                leading "/" is stripped — paths are already
+#                                root-relative — and a single segment like
+#                                "/packages" is treated as a directory, not a name)
 #   - path glob:                 docs/*.md
 # Note: in path globs, '*' matches across '/' (bash glob semantics), so prefer
 # "dir/" or "dir/**" when you mean "this whole subtree".
@@ -196,15 +200,26 @@ notes_path_excluded() {
     local base
     base="$(basename "$rel")"
 
-    local raw pattern dir
+    local raw pattern dir anchored
     local -a _patterns
     IFS=',' read -ra _patterns <<< "$EXCLUDE_PATTERNS"
     for raw in "${_patterns[@]}"; do
         pattern="$(_trim_pattern "$raw")"
         [ -n "$pattern" ] || continue
 
-        if [[ "$pattern" != */* ]]; then
-            # No slash: legacy basename glob.
+        # A leading slash anchors to the project root (gitignore style). Strip it
+        # — relative paths are already root-anchored — but remember it so that an
+        # anchored single segment ("/packages") is treated as a path/directory
+        # rather than a basename.
+        anchored=0
+        if [[ "$pattern" == /* ]]; then
+            anchored=1
+            pattern="${pattern#/}"
+        fi
+        [ -n "$pattern" ] || continue
+
+        if [[ "$anchored" -eq 0 && "$pattern" != */* ]]; then
+            # No anchor and no slash: legacy basename glob.
             # shellcheck disable=SC2053
             [[ "$base" == $pattern ]] && return 0
             continue
@@ -229,7 +244,8 @@ notes_path_excluded() {
             continue
         fi
 
-        # Bare path with a slash and no glob: exact file OR directory subtree.
+        # Bare path (anchored single segment, or any path with a slash) and no
+        # glob: exact file OR directory subtree.
         [[ "$rel" == "$pattern" || "$rel" == "$pattern"/* ]] && return 0
     done
     return 1
