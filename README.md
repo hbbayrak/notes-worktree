@@ -49,14 +49,24 @@ Simply ask Claude to set up notes worktree:
 
 ### Manual Setup
 
-Run the init script directly from a clone of this repo (the same scripts are bundled inside the installed plugin):
+Run the init script directly from a clone of this repo (the same scripts are bundled inside the installed plugin).
+
+**Preview first** — the sweep moves *every* markdown file (except the root `README.md`) into the notes branch, so see what would move (and keep code-adjacent docs in main) before committing:
+
+```bash
+# No changes — lists what would move, grouped by directory, flags code-adjacent trees:
+./plugins/notes-worktree/skills/notes-worktree/scripts/init-notes-worktree.sh --dry-run
+./plugins/notes-worktree/skills/notes-worktree/scripts/init-notes-worktree.sh --dry-run --exclude "src/,packages/"
+```
+
+Then run the real setup:
 
 ```bash
 ./plugins/notes-worktree/skills/notes-worktree/scripts/init-notes-worktree.sh \
   --branch notes \
   --dir ./notes \
   --exclusion gitignore \
-  [--move-files] [--vscode] [--exclude "SKILL.md,CHANGELOG.md"]
+  [--move-files] [--vscode] [--exclude "SKILL.md,src/,docs/superpowers/"]
 ```
 
 For a new branch, `--branch`, `--dir`, and `--exclusion` are required:
@@ -64,6 +74,18 @@ For a new branch, `--branch`, `--dir`, and `--exclusion` are required:
 - `--exclusion exclude` — local-only exclusions via `.git/info/exclude`
 - `--move-files` — move existing `.md` files into the notes branch and symlink them
 - `--vscode` — hide the notes directory in VSCode
+- `--dry-run` — preview the sweep and exit without making changes
+- `--exclude PATTERNS` — comma-separated patterns to **keep in main**. These can be
+  filenames, globs, **or directory subtrees**, not just filenames:
+  - `SKILL.md` — a file by name (matched anywhere)
+  - `*.generated.md` — a basename glob
+  - `src/` or `src/**` — keep the entire `src/` subtree in main
+  - `docs/superpowers/` — keep a nested subtree
+
+  A pattern with **no slash** matches by basename (legacy behavior); include a
+  slash (e.g. `src/`) to exclude a directory. See
+  [the exclude pattern syntax reference](plugins/notes-worktree/skills/notes-worktree/references/setup-guide.md#exclude-pattern-syntax)
+  for the full table and the `*`-crosses-`/` caveat.
 
 If the branch already exists (locally or on a remote), its configuration is read from `.notesrc` and you can run with just `--branch <name>`.
 
