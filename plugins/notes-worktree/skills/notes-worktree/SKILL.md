@@ -234,16 +234,23 @@ echo "# New Feature" > server/new-feature/README.md
 
 ### Cloning a Project with Notes
 
-The init script automatically detects and fetches existing remote branches:
+The init script detects and fetches the existing remote branch, mounts the
+worktree, **and materializes the documentation symlinks** (via a symlinks-only
+reverse sync), so the clone is immediately usable in one step:
 
 ```bash
-# Option 1: Use the init script (recommended - handles everything)
+# Option 1: Use the init script (recommended — fetches the branch, mounts the
+# worktree, and creates all symlinks)
 ${CLAUDE_SKILL_DIR}/scripts/init-notes-worktree.sh --branch notes
 
-# Option 2: Manual setup
+# Option 2: Manual setup (equivalent two-step form)
 git worktree add ./notes notes
-./notes/scripts/sync-notes.sh  # Creates all symlinks
+./notes/scripts/sync-notes.sh --reverse-only  # Creates symlinks only (no main→notes sweep)
 ```
+
+> Onboarding uses a **reverse-only** sync on purpose: it creates the symlinks
+> from the notes branch without sweeping your working tree, so your own
+> uncommitted code-tree `.md` files are never moved into the notes branch.
 
 ### Updating Documentation
 

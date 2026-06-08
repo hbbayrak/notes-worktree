@@ -254,12 +254,20 @@ When symlinks are removed but exclusion entries remain:
 
 ### "Branch already exists"
 
-The init script only creates new branches. If the branch exists:
+When the branch already exists (locally or on remote), `init-notes-worktree.sh`
+reads its `.notesrc`, mounts the worktree, and creates the symlinks for you — so
+the normal path is simply:
 
-1. **Use existing branch**: Set up worktree manually
+```bash
+./notes/scripts/init-notes-worktree.sh --branch notes
+```
+
+If you prefer to do it by hand:
+
+1. **Use existing branch**: Set up the worktree manually
    ```bash
    git worktree add ./notes notes
-   ./notes/scripts/sync-notes.sh
+   ./notes/scripts/sync-notes.sh --reverse-only   # symlinks only, no main→notes sweep
    ```
 
 2. **Choose different name**: Run init with different branch name
@@ -407,13 +415,19 @@ chmod +x ./notes/scripts/*.sh
 
 ### Team Member Setup
 
-After cloning:
+After cloning, the one-step path also materializes the symlinks:
 ```bash
-git worktree add ./notes notes
-./notes/scripts/sync-notes.sh
+./notes/scripts/init-notes-worktree.sh --branch notes
 ```
 
-The `.gitignore` is already configured, symlinks are created by sync.
+Or do it manually with a **reverse-only** sync so your own uncommitted
+code-tree `.md` files are never swept into the notes branch:
+```bash
+git worktree add ./notes notes
+./notes/scripts/sync-notes.sh --reverse-only
+```
+
+The `.gitignore` is already configured; the reverse sync creates the symlinks.
 
 ### CI/CD Considerations
 
@@ -593,6 +607,9 @@ Options:
   -v, --verbose        Show detailed output
   -q, --quiet          Show only errors
   --watch              Watch for file changes and auto-sync
+  --reverse-only       Only create symlinks from the notes branch (skip the
+                       main→notes sweep). Use when onboarding to an existing
+                       notes branch so stray code-tree .md files aren't moved.
   --no-interactive     Skip interactive conflict prompts
   -h, --help           Show help
 ```
@@ -600,7 +617,8 @@ Options:
 Features:
 - **Forward sync**: Moves `.md` files from main project to notes, creates symlinks
 - **Reverse sync**: Creates symlinks for files in notes lacking them in main
-- **Auto-gitignore**: Every markdown file except the root `README.md` is automatically untracked when using gitignore exclusion
+- **Reverse-only mode** (`--reverse-only`): creates symlinks without the forward sweep — the onboarding/clone path (`init-notes-worktree.sh` runs this automatically for an existing branch)
+- **Auto-untrack**: Every markdown file except the root `README.md` is automatically removed from the code-branch index when it becomes a symlink — for **both** exclusion methods (`gitignore` and `exclude`). Commit the resulting staged removals on the code branch so the migration is shared with teammates.
 
 ### status-notes.sh
 
