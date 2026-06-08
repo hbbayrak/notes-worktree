@@ -43,6 +43,11 @@ while [[ $# -gt 0 ]]; do
             echo "  -v, --verbose    Show detailed file listings"
             echo "  -q, --quiet      Show only errors and summary counts"
             echo "  -h, --help       Show this help message"
+            echo ""
+            echo "Note: status is read-only EXCEPT that it self-heals the"
+            echo "      notes/scripts symlink if it is stale, dangling, or missing"
+            echo "      (e.g. after a plugin upgrade). A repair is reported in the"
+            echo "      summary; a real file/dir at that path is never touched."
             exit 0
             ;;
         *)
@@ -58,6 +63,14 @@ done
 init_project_root
 load_notes_config
 verify_notes_worktree
+
+# Self-heal a stale/dangling/missing notes/scripts symlink (e.g. after a plugin
+# upgrade). NOTE: status is otherwise read-only, but this intentionally writes:
+# it re-points the symlink so direct `./notes/scripts/*.sh` calls keep hitting
+# live code. It only ever touches a symlink or a missing path — a real file/dir
+# at notes/scripts is left untouched (see ensure_scripts_symlink in _common.sh).
+# A repair is reported in the summary below so the mutation is never silent.
+ensure_scripts_symlink
 
 # -------------------------------------------
 # Collect status information
@@ -183,6 +196,9 @@ if ! $QUIET; then
     echo "=========================================="
     print_info "Branch: $BRANCH_NAME"
     print_info "Worktree: ./$WORKTREE_DIR"
+    if ${SCRIPTS_SYMLINK_REPAIRED:-false}; then
+        echo -e "  ${YELLOW}⚠${NC} notes/scripts symlink was stale — repaired to current plugin version"
+    fi
     echo ""
 fi
 

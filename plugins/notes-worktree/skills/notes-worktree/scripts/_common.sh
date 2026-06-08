@@ -131,6 +131,39 @@ verify_notes_worktree() {
     fi
 }
 
+# -------------------------------------------
+# Keep the notes/scripts symlink pointed at the running plugin version
+# -------------------------------------------
+# init creates `notes/scripts` pointing at $SCRIPT_DIR, which is a version-pinned
+# plugin cache path (.../<version>/...). After a plugin upgrade that target is
+# stale (and eventually dangling once the old cache is garbage-collected), so a
+# bare `./notes/scripts/*.sh` would keep running the OLD version. Because Claude
+# always invokes the active version via ${CLAUDE_SKILL_DIR}, repairing the link to
+# the currently-running $SCRIPT_DIR on each run keeps it pointed at live code.
+# Requires NOTES_ROOT (set by load_notes_config). Sets SCRIPTS_SYMLINK_REPAIRED.
+ensure_scripts_symlink() {
+    SCRIPTS_SYMLINK_REPAIRED=false
+    [ -n "${NOTES_ROOT:-}" ] && [ -d "$NOTES_ROOT" ] || return 0
+    [ -d "$SCRIPT_DIR" ] || return 0
+
+    local link="$NOTES_ROOT/scripts"
+    local current=""
+    if [ -L "$link" ]; then
+        current="$(readlink "$link" 2>/dev/null || echo "")"
+    elif [ -e "$link" ]; then
+        # A real file/dir occupies the path — never clobber it
+        return 0
+    fi
+
+    if [ "$current" != "$SCRIPT_DIR" ]; then
+        if ln -sfn "$SCRIPT_DIR" "$link" 2>/dev/null; then
+            SCRIPTS_SYMLINK_REPAIRED=true
+            log_verbose "  Repaired notes/scripts symlink -> $SCRIPT_DIR"
+        fi
+    fi
+    return 0
+}
+
 # Exclusion markers used in gitignore/exclude files
 EXCLUDE_MARKER="# >>> sync-notes managed entries >>>"
 EXCLUDE_END="# <<< sync-notes managed entries <<<"

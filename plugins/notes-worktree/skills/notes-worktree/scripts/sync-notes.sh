@@ -99,6 +99,14 @@ init_project_root
 load_notes_config
 verify_notes_worktree
 
+# Keep notes/scripts pointed at the running plugin version (heals post-upgrade staleness)
+if ! $DRY_RUN; then
+    ensure_scripts_symlink
+    if ${SCRIPTS_SYMLINK_REPAIRED:-false}; then
+        log_normal "Refreshed notes/scripts symlink to the current plugin version"
+    fi
+fi
+
 # -------------------------------------------
 # Watch mode
 # -------------------------------------------

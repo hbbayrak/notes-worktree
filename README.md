@@ -35,7 +35,7 @@ Plugins are **pull-based** — you receive a new version when you refresh the ma
 
 To enable automatic updates for this marketplace, toggle it via `/plugin` → **Marketplaces**.
 
-> Each version is cached separately under `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`. If you set up a notes worktree before updating, re-run `init-notes-worktree.sh` afterward so the `notes/scripts` symlink re-points at the new plugin version.
+> Each version is cached separately under `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`. If you set up a notes worktree before updating, the `notes/scripts` symlink is **refreshed automatically** the next time you run `sync-notes.sh`, `status-notes.sh`, or `cleanup-notes.sh` (or re-run `init-notes-worktree.sh`) — no manual step needed.
 
 ## Usage
 
